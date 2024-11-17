@@ -1,0 +1,8 @@
+[package]
+name = "calrpn"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustyline = "15.0.0"
+crossterm = "0.28.1"
