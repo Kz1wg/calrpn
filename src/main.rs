@@ -1,6 +1,6 @@
 use core::f64;
 use crossterm::execute;
-use crossterm::terminal::{size, ClearType, SetSize};
+use crossterm::terminal::{size, ClearType, ScrollUp, SetSize};
 use rustyline::DefaultEditor;
 use std::io;
 enum Expr {
@@ -16,6 +16,9 @@ enum Expr {
     Sin,
     Cos,
     Tan,
+    ASin,
+    ACos,
+    ATan,
     Pi,
     E,
     Swap,
@@ -84,16 +87,29 @@ fn manage_stack(
                 calstack.push(sum_result);
             }
             Expr::Sin => {
-                let ex = convert_deg_item(get_one_item(calstack)?, degmode);
+                let ex = to_rad_item(get_one_item(calstack)?, degmode);
                 calstack.push(ex.sin())
             }
             Expr::Cos => {
-                let ex = convert_deg_item(get_one_item(calstack)?, degmode);
+                let ex = to_rad_item(get_one_item(calstack)?, degmode);
                 calstack.push(ex.cos())
             }
             Expr::Tan => {
-                let ex = convert_deg_item(get_one_item(calstack)?, degmode);
+                let ex = to_rad_item(get_one_item(calstack)?, degmode);
                 calstack.push(ex.tan())
+            }
+            Expr::ASin => {
+                let ex = get_one_item(calstack)?;
+                // asin -> radian
+                calstack.push(to_deg_item(ex.asin(), degmode));
+            }
+            Expr::ACos => {
+                let ex = get_one_item(calstack)?;
+                calstack.push(to_deg_item(ex.acos(), degmode));
+            }
+            Expr::ATan => {
+                let ex = get_one_item(calstack)?;
+                calstack.push(to_deg_item(ex.atan(), degmode));
             }
             Expr::Pi => {
                 calstack.push(f64::consts::PI);
@@ -138,6 +154,9 @@ fn parse_exp(expression: &str) -> Result<Expr, String> {
             "sin" => Ok(Expr::Sin),
             "cos" => Ok(Expr::Cos),
             "tan" => Ok(Expr::Tan),
+            "asin" => Ok(Expr::ASin),
+            "acos" => Ok(Expr::ACos),
+            "atan" => Ok(Expr::ATan),
             "^" | "pow" => Ok(Expr::Pow),
             "sqrt" => Ok(Expr::Sqrt),
             "log" => Ok(Expr::Log),
@@ -180,16 +199,22 @@ fn to_rad(val: f64) -> f64 {
 fn to_deg(val: f64) -> f64 {
     val / f64::consts::PI * 180.0
 }
-fn convert_deg_item(val: f64, mode: &DegMode) -> f64 {
+fn to_rad_item(val: f64, mode: &DegMode) -> f64 {
     match mode {
         DegMode::Rad => val,
         DegMode::Deg => to_rad(val),
     }
 }
+fn to_deg_item(val: f64, mode: &DegMode) -> f64 {
+    match mode {
+        DegMode::Rad => val,
+        DegMode::Deg => to_deg(val),
+    }
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (cols, rows) = size()?;
     // Resize terminal and scroll up.
-    execute!(io::stdout(), SetSize(60, 20))?;
+    execute!(io::stdout(), SetSize(60, 20), ScrollUp(15))?;
     let mut stackdata: Vec<f64> = Vec::new();
     let mut rl = DefaultEditor::new()?;
     let mut degmode = DegMode::Deg;
@@ -220,4 +245,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     execute!(io::stdout(), SetSize(cols, rows))?;
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use core::f64;
+
+    use crate::{manage_stack, DegMode};
+
+    #[test]
+    fn test() -> Result<(), String> {
+        let test_manage = |exp| {
+            let mut teststack = Vec::new();
+            match manage_stack(exp, &mut teststack, &mut DegMode::Rad) {
+                Ok(_) => (),
+                Err(e) => eprintln!("{e}"),
+            };
+            teststack[0]
+        };
+        assert_eq!(test_manage("2 3 +"), 5.0);
+        assert_eq!(test_manage("2 3 -"), -1.0);
+        assert_eq!(test_manage("2 3 *"), 6.0);
+        assert_eq!(test_manage("3 2 /"), 1.5);
+        assert_eq!(test_manage("3 2 ^"), 9.0);
+        assert_eq!(test_manage("9.0 sqrt"), 3.0);
+        assert_eq!(test_manage("9.0 3 log"), 2.0);
+        assert_eq!(test_manage("9.0 3 3 5 sum"), 20.0);
+        assert!((test_manage("pi 6 / sin") - 0.5).abs() < 1e-10);
+        assert!((test_manage("pi 3 / cos") - 0.5).abs() < 1e-10);
+        assert!((test_manage("pi 4 / tan") - 1.0).abs() < 1e-10);
+        assert!((test_manage("0.5 asin") - f64::consts::PI / 6.0).abs() < 1e-10);
+        assert!((test_manage("0.5 acos") - f64::consts::PI / 3.0).abs() < 1e-10);
+        assert!((test_manage("1.0 atan") - f64::consts::PI / 4.0).abs() < 1e-10);
+        assert_eq!(test_manage("pi"), f64::consts::PI);
+        assert_eq!(test_manage("e"), f64::consts::E);
+        assert_eq!(test_manage("60 torad"), f64::consts::PI / 3.0);
+        assert_eq!(test_manage("pi 3 / todeg"), 60.0);
+        assert_eq!(test_manage("2 3 + 12 *"), 60.0);
+        assert_eq!(test_manage("3 3 3 sum sqrt"), 3.0);
+        Ok(())
+    }
 }
