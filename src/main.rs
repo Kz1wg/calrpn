@@ -1,141 +1,102 @@
+mod calcenums;
+use calcenums::{BinomialFunc, Constant, DegMode, Expr, MonomialFunc, OperateStack};
+
 use core::f64;
 use crossterm::execute;
 use crossterm::terminal::{size, ClearType, ScrollUp, SetSize};
+
 use rustyline::DefaultEditor;
 use std::io;
-enum Expr {
-    Numbers(f64),
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Pow,
-    Sqrt,
-    Log,
-    Sum,
-    Sin,
-    Cos,
-    Tan,
-    ASin,
-    ACos,
-    ATan,
-    Pi,
-    E,
-    Swap,
-    Clear,
-    ToRad,
-    ToDeg,
-    Deg,
-    Rad,
-}
 
-#[derive(Debug)]
-enum DegMode {
-    Rad,
-    Deg,
-}
-
+// スタックの管理関数
 fn manage_stack(
     expression: &str,
     calstack: &mut Vec<f64>,
     degmode: &mut DegMode,
 ) -> Result<(), String> {
-    let mut items = Vec::new();
-    for exp in expression.split_whitespace() {
-        let initem = parse_exp(exp)?;
-        items.push(initem);
-    }
+    // 入力された式を空白で分割し、それぞれの要素をparse_exp関数で処理
+    let items = expression
+        .split_whitespace()
+        .map(parse_exp)
+        .collect::<Result<Vec<Expr>, String>>()?;
 
+    // 式の要素を順番に処理
     for item in items {
+        // 式の要素に応じて処理を分岐
         match item {
+            // 数値の場合
             Expr::Numbers(data) => calstack.push(data),
-            Expr::Add => {
+            // 二項演算の場合
+            Expr::Binomial(b_func) => {
                 let (exex, ex) = get_two_item(calstack)?;
-                calstack.push(exex + ex)
+                let result = match b_func {
+                    BinomialFunc::Add => exex + ex,
+                    BinomialFunc::Subtract => exex - ex,
+                    BinomialFunc::Multiply => exex * ex,
+                    BinomialFunc::Divide => {
+                        if ex == 0f64 {
+                            return Err("Zero Divided Error".to_string());
+                        } else {
+                            exex / ex
+                        }
+                    }
+                    BinomialFunc::Pow => exex.powf(ex),
+                    BinomialFunc::Log => exex.log(ex),
+                };
+                calstack.push(result);
             }
-            Expr::Subtract => {
-                let (exex, ex) = get_two_item(calstack)?;
-                calstack.push(exex - ex)
+            // 単項演算の場合
+            Expr::Monomial(m_func) => {
+                let ex = get_one_item(calstack)?;
+                let result = match m_func {
+                    MonomialFunc::Sqrt => ex.sqrt(),
+                    MonomialFunc::Sin => {
+                        let ex = to_rad_item(ex, degmode);
+                        ex.sin()
+                    }
+                    MonomialFunc::Cos => {
+                        let ex = to_rad_item(ex, degmode);
+                        ex.cos()
+                    }
+                    MonomialFunc::Tan => {
+                        let ex = to_rad_item(ex, degmode);
+                        ex.tan()
+                    }
+                    MonomialFunc::ASin => to_deg_item(ex.asin(), degmode),
+                    MonomialFunc::ACos => to_deg_item(ex.acos(), degmode),
+                    MonomialFunc::ATan => to_deg_item(ex.atan(), degmode),
+                    MonomialFunc::ToDeg => to_deg(ex),
+                    MonomialFunc::ToRad => to_rad(ex),
+                };
+                calstack.push(result);
             }
-            Expr::Multiply => {
-                let (exex, ex) = get_two_item(calstack)?;
-                calstack.push(exex * ex)
-            }
-            Expr::Divide => {
-                let (exex, ex) = get_two_item(calstack)?;
-                if ex == 0f64 {
-                    return Err("Zero Divided Error".to_string());
-                } else {
-                    calstack.push(exex / ex)
+            // スタック操作・演算の場合
+            Expr::Opstack(operate) => match operate {
+                OperateStack::Swap => {
+                    if calstack.len() < 2 {
+                        return Err("Stack is too short".to_string());
+                    } else {
+                        let last = calstack.len() - 1;
+                        calstack.swap(last, last - 1);
+                    }
                 }
-            }
-            Expr::Pow => {
-                let (exex, ex) = get_two_item(calstack)?;
-                calstack.push(exex.powf(ex));
-            }
-            Expr::Sqrt => {
-                let ex = get_one_item(calstack)?;
-                calstack.push(ex.sqrt());
-            }
-            Expr::Log => {
-                let (exex, ex) = get_two_item(calstack)?;
-                calstack.push(exex.log(ex));
-            }
-            Expr::Sum => {
-                let sum_result = calstack.iter().sum();
-                calstack.clear();
-                calstack.push(sum_result);
-            }
-            Expr::Sin => {
-                let ex = to_rad_item(get_one_item(calstack)?, degmode);
-                calstack.push(ex.sin())
-            }
-            Expr::Cos => {
-                let ex = to_rad_item(get_one_item(calstack)?, degmode);
-                calstack.push(ex.cos())
-            }
-            Expr::Tan => {
-                let ex = to_rad_item(get_one_item(calstack)?, degmode);
-                calstack.push(ex.tan())
-            }
-            Expr::ASin => {
-                let ex = get_one_item(calstack)?;
-                // asin -> radian
-                calstack.push(to_deg_item(ex.asin(), degmode));
-            }
-            Expr::ACos => {
-                let ex = get_one_item(calstack)?;
-                calstack.push(to_deg_item(ex.acos(), degmode));
-            }
-            Expr::ATan => {
-                let ex = get_one_item(calstack)?;
-                calstack.push(to_deg_item(ex.atan(), degmode));
-            }
-            Expr::Pi => {
-                calstack.push(f64::consts::PI);
-            }
-            Expr::E => {
-                calstack.push(f64::consts::E);
-            }
-            Expr::ToDeg => {
-                let ex = get_one_item(calstack)?;
-                calstack.push(to_deg(ex));
-            }
-            Expr::ToRad => {
-                let ex = get_one_item(calstack)?;
-                calstack.push(to_rad(ex));
-            }
-            Expr::Swap => {
-                if calstack.len() < 2 {
-                    return Err("Stack is too short".to_string());
-                } else {
-                    let last = calstack.len() - 1;
-                    calstack.swap(last, last - 1);
+                OperateStack::Clear => calstack.clear(),
+                OperateStack::Sum => {
+                    let sum_result = calstack.iter().sum();
+                    calstack.clear();
+                    calstack.push(sum_result);
                 }
+                OperateStack::Deg => *degmode = DegMode::Deg,
+                OperateStack::Rad => *degmode = DegMode::Rad,
+            },
+            // 定数の場合
+            Expr::Const(consts) => {
+                let result = match consts {
+                    Constant::Pi => f64::consts::PI,
+                    Constant::E => f64::consts::E,
+                };
+                calstack.push(result);
             }
-            Expr::Clear => calstack.clear(),
-            Expr::Deg => *degmode = DegMode::Deg,
-            Expr::Rad => *degmode = DegMode::Rad,
         }
     }
     Ok(())
@@ -145,33 +106,34 @@ fn parse_exp(expression: &str) -> Result<Expr, String> {
     match expression.to_lowercase().parse::<f64>() {
         Ok(data) => Ok(Expr::Numbers(data)),
         Err(_) => match expression {
-            "+" => Ok(Expr::Add),
-            "-" => Ok(Expr::Subtract),
-            "*" => Ok(Expr::Multiply),
-            "/" => Ok(Expr::Divide),
-            "c" | "cl" | "clear" => Ok(Expr::Clear),
-            "sw" | "swap" => Ok(Expr::Swap),
-            "sin" => Ok(Expr::Sin),
-            "cos" => Ok(Expr::Cos),
-            "tan" => Ok(Expr::Tan),
-            "asin" => Ok(Expr::ASin),
-            "acos" => Ok(Expr::ACos),
-            "atan" => Ok(Expr::ATan),
-            "^" | "pow" => Ok(Expr::Pow),
-            "sqrt" => Ok(Expr::Sqrt),
-            "log" => Ok(Expr::Log),
-            "pi" => Ok(Expr::Pi),
-            "e" => Ok(Expr::E),
-            "sum" => Ok(Expr::Sum),
-            "torad" => Ok(Expr::ToRad),
-            "todeg" => Ok(Expr::ToDeg),
-            "rad" => Ok(Expr::Rad),
-            "deg" => Ok(Expr::Deg),
+            "+" => Ok(Expr::Binomial(BinomialFunc::Add)),
+            "-" => Ok(Expr::Binomial(BinomialFunc::Subtract)),
+            "*" => Ok(Expr::Binomial(BinomialFunc::Multiply)),
+            "/" => Ok(Expr::Binomial(BinomialFunc::Divide)),
+            "c" | "cl" | "clear" => Ok(Expr::Opstack(OperateStack::Clear)),
+            "sw" | "swap" => Ok(Expr::Opstack(OperateStack::Swap)),
+            "sin" => Ok(Expr::Monomial(MonomialFunc::Sin)),
+            "cos" => Ok(Expr::Monomial(MonomialFunc::Cos)),
+            "tan" => Ok(Expr::Monomial(MonomialFunc::Tan)),
+            "asin" => Ok(Expr::Monomial(MonomialFunc::ASin)),
+            "acos" => Ok(Expr::Monomial(MonomialFunc::ACos)),
+            "atan" => Ok(Expr::Monomial(MonomialFunc::ATan)),
+            "^" | "pow" => Ok(Expr::Binomial(BinomialFunc::Pow)),
+            "sqrt" => Ok(Expr::Monomial(MonomialFunc::Sqrt)),
+            "log" => Ok(Expr::Binomial(BinomialFunc::Log)),
+            "pi" => Ok(Expr::Const(Constant::Pi)),
+            "e" => Ok(Expr::Const(Constant::E)),
+            "sum" => Ok(Expr::Opstack(OperateStack::Sum)),
+            "torad" => Ok(Expr::Monomial(MonomialFunc::ToRad)),
+            "todeg" => Ok(Expr::Monomial(MonomialFunc::ToDeg)),
+            "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
+            "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
             _ => Err("Invalid Data".to_string()),
         },
     }
 }
 
+// スタックから2つの要素を取り出す
 fn get_two_item(calstack: &mut Vec<f64>) -> Result<(f64, f64), String> {
     if calstack.len() < 2 {
         Err("Stack is too short".to_string())
@@ -182,7 +144,7 @@ fn get_two_item(calstack: &mut Vec<f64>) -> Result<(f64, f64), String> {
         }
     }
 }
-
+// スタックから1つの要素を取り出す
 fn get_one_item(calstack: &mut Vec<f64>) -> Result<f64, String> {
     if calstack.is_empty() {
         Err("Stack is Empty".to_string())
@@ -193,38 +155,47 @@ fn get_one_item(calstack: &mut Vec<f64>) -> Result<f64, String> {
         }
     }
 }
+// 角度をラジアンに変換
 fn to_rad(val: f64) -> f64 {
     val / 180.0 * f64::consts::PI
 }
+// ラジアンを角度に変換
 fn to_deg(val: f64) -> f64 {
     val / f64::consts::PI * 180.0
 }
+//　値をラジアンに変換する
 fn to_rad_item(val: f64, mode: &DegMode) -> f64 {
     match mode {
         DegMode::Rad => val,
         DegMode::Deg => to_rad(val),
     }
 }
+// 値をDegreeに変換する
 fn to_deg_item(val: f64, mode: &DegMode) -> f64 {
     match mode {
         DegMode::Rad => val,
         DegMode::Deg => to_deg(val),
     }
 }
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // プログラム終了後元のサイズに戻すため、元サイズを保持
     let (cols, rows) = size()?;
     // Resize terminal and scroll up.
-    execute!(io::stdout(), SetSize(60, 20), ScrollUp(15))?;
+    execute!(io::stdout(), SetSize(30, 18), ScrollUp(0))?;
+
     let mut stackdata: Vec<f64> = Vec::new();
     let mut rl = DefaultEditor::new()?;
     let mut degmode = DegMode::Deg;
     let clear = crossterm::terminal::Clear(ClearType::All);
     execute!(io::stdout(), clear)?;
     println!("Calrpn --Rpn calcurator--");
+
     loop {
         let readline = rl.readline(">> ");
         execute!(io::stdout(), clear)?;
         let mut message = String::new();
+
         if let Ok(data) = readline {
             if &data == "q" {
                 break;
@@ -236,9 +207,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("[{:?}]", degmode);
+
         for item in stackdata.iter() {
             println!("{:.3}", item)
         }
+
         if !message.is_empty() {
             eprintln!("{message}");
         }
@@ -246,6 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(io::stdout(), SetSize(cols, rows))?;
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use core::f64;
@@ -270,12 +244,12 @@ mod tests {
         assert_eq!(test_manage("9.0 sqrt"), 3.0);
         assert_eq!(test_manage("9.0 3 log"), 2.0);
         assert_eq!(test_manage("9.0 3 3 5 sum"), 20.0);
-        assert!((test_manage("pi 6 / sin") - 0.5).abs() < 1e-10);
-        assert!((test_manage("pi 3 / cos") - 0.5).abs() < 1e-10);
-        assert!((test_manage("pi 4 / tan") - 1.0).abs() < 1e-10);
-        assert!((test_manage("0.5 asin") - f64::consts::PI / 6.0).abs() < 1e-10);
-        assert!((test_manage("0.5 acos") - f64::consts::PI / 3.0).abs() < 1e-10);
-        assert!((test_manage("1.0 atan") - f64::consts::PI / 4.0).abs() < 1e-10);
+        assert!((test_manage("pi 6 / sin") - 0.5) < 1e-10);
+        assert!((test_manage("pi 3 / cos") - 0.5) < 1e-10);
+        assert!((test_manage("pi 4 / tan") - 1.0) < 1e-10);
+        assert!((test_manage("0.5 asin") - f64::consts::PI / 6.0) < 1e-10);
+        assert!((test_manage("0.5 acos") - f64::consts::PI / 3.0) < 1e-10);
+        assert!((test_manage("1.0 atan") - f64::consts::PI / 4.0) < 1e-10);
         assert_eq!(test_manage("pi"), f64::consts::PI);
         assert_eq!(test_manage("e"), f64::consts::E);
         assert_eq!(test_manage("60 torad"), f64::consts::PI / 3.0);
