@@ -14,10 +14,25 @@ fn manage_stack(
     calstack: &mut Vec<f64>,
     degmode: &mut DegMode,
 ) -> Result<(), String> {
+    let separate_exp = |x: &str| match x.chars().last() {
+        Some(c) => match c {
+            '+' | '-' | '*' | '/' | '^' => {
+                if x.len() > 1 {
+                    let (head, tail) = x.split_at(x.len() - 1);
+                    vec![head.to_string(), tail.to_string()]
+                } else {
+                    vec![x.to_string()]
+                }
+            }
+            _ => vec![x.to_string()],
+        },
+        None => vec![],
+    };
     // 入力された式を空白で分割し、それぞれの要素をparse_exp関数で処理
     let items = expression
         .split_whitespace()
-        .map(parse_exp)
+        .flat_map(separate_exp)
+        .map(|arg: String| parse_exp(&arg))
         .collect::<Result<Vec<Expr>, String>>()?;
 
     // 式の要素を順番に処理
