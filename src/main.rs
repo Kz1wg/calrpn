@@ -1,5 +1,7 @@
-mod calcenums;
-use calcenums::{manage_stack, DegMode, Memorize};
+mod calcrpn;
+mod finance;
+use calcrpn::{manage_stack, DegMode, Memorize};
+use num::complex::Complex;
 
 use tui::{
     backend::CrosstermBackend,
@@ -13,6 +15,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+
 use rustyline::{
     config::Configurer,
     history::{History, SearchDirection},
@@ -21,38 +24,71 @@ use rustyline::{
 use std::{
     collections::{BTreeMap, VecDeque},
     io,
+    str::FromStr,
 };
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum StackData {
     Number(f64),
-    Complex(f64, f64),
+    Complex(Complex<f64>),
 }
-// impl std::fmt::Display for StackData {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             StackData::Number(val) => write!(f, "{:.4}", val),
-//             StackData::Complex(re, im) => write!(f, "{:.4} + {:.4}i", re, im),
-//         }
-//     }
-// }
+impl FromStr for StackData {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<f64>() {
+            Ok(val) => Ok(StackData::Number(val)),
+            Err(_) => match s.parse::<Complex<f64>>() {
+                Ok(val) => Ok(StackData::Complex(val)),
+                Err(_) => Err("Parse Error".to_string()),
+            },
+        }
+    }
+}
 
 impl StackData {
-    fn float_format(&self, n_place: usize) -> String {
+    fn num_format(&self, n_place: usize) -> String {
         match self {
-            StackData::Number(val) => format!("{:.1$}", val, n_place),
-            StackData::Complex(re, im) => format!("{:.2$} + {:.2$}i", re, im, n_place),
+            StackData::Number(val) => match self.is_integer() {
+                true => format!("{:.0}", val),
+                false => format!("{:.1$}", val, n_place),
+            },
+            StackData::Complex(val) => {
+                format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
+            }
         }
     }
     fn is_number(&self) -> bool {
         matches!(self, StackData::Number(_))
     }
-    fn is_complex(&self) -> bool {
-        matches!(self, StackData::Complex(_, _))
+    fn is_integer(&self) -> bool {
+        match self {
+            StackData::Number(val) => val.fract() == 0.0,
+            _ => false,
+        }
     }
-    fn get_number(&self) -> f64 {
+    fn is_complex(&self) -> bool {
+        matches!(self, StackData::Complex(_))
+    }
+    fn try_to_real(&self) -> StackData {
+        if self.is_complex() {
+            if self.get_complex().im == 0.0 {
+                StackData::Number(self.get_realnumber())
+            } else {
+                self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+    fn get_complex(&self) -> Complex<f64> {
+        match self {
+            StackData::Complex(val) => *val,
+            StackData::Number(_val) => Complex::new(self.get_realnumber(), 0.0),
+        }
+    }
+    fn get_realnumber(&self) -> f64 {
         match self {
             StackData::Number(val) => *val,
-            _ => 0.0,
+            StackData::Complex(val) => val.re,
         }
     }
 }
@@ -102,12 +138,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref(),
                 )
                 .split(f.size());
-
-            //Memory
-            let memory_block = Block::default().borders(Borders::NONE);
-            let memory_text = Paragraph::new(memory.as_ref()).block(memory_block);
-            f.render_widget(memory_text, chunks[1]);
-
             // ステータスバー
             let status_block = Block::default().borders(Borders::NONE);
             let status_text = Paragraph::new(format!(
@@ -116,6 +146,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ))
             .block(status_block);
             f.render_widget(status_text, chunks[0]);
+
+            //Memory
+            let memory_block = Block::default().borders(Borders::NONE);
+            let memory_text = Paragraph::new(memory.as_ref()).block(memory_block);
+            f.render_widget(memory_text, chunks[1]);
+            // Helper メッセージ
+            let help_block = Block::default().title("Message").borders(Borders::ALL);
+            let help_text = Paragraph::new(format!(
+                "Enter: Calc | Esc : Quit | Undo : undo{}{}",
+                sepalator, message
+            ))
+            .block(help_block);
+            f.render_widget(help_text, chunks[2]);
+
             //結果表示
             let result_block = Block::default().title("Result Stack").borders(Borders::ALL);
             let result_text = Paragraph::new(result.as_ref()).block(result_block);
@@ -125,20 +169,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let input_block = Block::default().title("Input ").borders(Borders::TOP);
             let input_text = Paragraph::new(input.as_ref()).block(input_block);
             f.render_widget(input_text, chunks[4]);
-            // Helper メッセージ
-            let help_block = Block::default().title("Message").borders(Borders::ALL);
-            let help_text = Paragraph::new(format!(
-                "Enter: Calc | Esc : Quit | Undo : undo{}{}",
-                sepalator, message
-            ))
-            .block(help_block);
-            f.render_widget(help_text, chunks[2]);
         })?;
 
         // 入力のカーソルを表示
         let input_col = 1;
         let input_row = result_len + 8;
         let cursor_col = input_col + input.len() as u16;
+
         execute!(
             terminal.backend_mut(),
             crossterm::cursor::MoveTo(cursor_col, input_row),
@@ -154,6 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 KeyCode::Backspace => {
                     input.pop();
                 }
+                // readline入力履歴機能
                 KeyCode::Up => {
                     if !readline.history().is_empty() {
                         hist_index = hist_index.saturating_sub(1);
@@ -177,6 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
                     }
                 }
+                // readline入力履歴機能ここまで
                 KeyCode::Enter => {
                     hist_index = readline.history().len() + 1;
                     input_log.push_back(input.clone());
@@ -266,13 +305,14 @@ fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
     }
     *message = input_log
         .iter()
-        .fold("Hist: ".to_string(), |acc, x| acc + x + " =>");
+        .rev()
+        .fold("Hist: ".to_string(), |acc, x| acc + x + " ← ");
 }
 
 fn update_memo(memo_map: &BTreeMap<String, StackData>, memory: &mut String) {
     // memo_mapをStringに変換しスペースで区切る
     for (key, sval) in memo_map.iter() {
-        memory.push_str(&format!("{}: {} ", key, sval.float_format(2)));
+        memory.push_str(&format!("{}: {} ", key, sval.num_format(2)));
     }
 }
 
@@ -284,7 +324,7 @@ fn update_stack(stack: &VecDeque<StackData>, result: &mut String, decimal_point:
         "\n"
     };
     for (i, sval) in stack.iter().enumerate().rev().take(10).rev() {
-        result.push_str(sval.float_format(decimal_point).as_ref());
+        result.push_str(sval.num_format(decimal_point).as_ref());
         if i < stack.len() - 1 {
             result.push_str(sepalator);
         }
