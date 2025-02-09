@@ -1,6 +1,7 @@
 use crate::StackData;
 use core::f64;
 use num::complex::Complex;
+use num::complex::ComplexFloat;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 
@@ -41,6 +42,7 @@ pub enum MonomialFunc {
     ATan,
     ToDeg,
     ToRad,
+    ABS,
     Factorial,
 }
 
@@ -223,6 +225,7 @@ pub fn manage_stack(
                         }
                         Complex::new(factorial(1.0, ex.re)?, 0.0)
                     }
+                    MonomialFunc::ABS => Complex::new(ex.abs(), 0.0),
                 };
                 calstack.push_back(StackData::Complex(result).try_to_real());
             }
@@ -323,6 +326,7 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
             "sum" => Ok(Expr::Opstack(OperateStack::Sum)),
             "torad" => Ok(Expr::Monomial(MonomialFunc::ToRad)),
             "todeg" => Ok(Expr::Monomial(MonomialFunc::ToDeg)),
+            "abs" => Ok(Expr::Monomial(MonomialFunc::ABS)),
             "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
             "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
             _ => match memo_mode {
@@ -450,37 +454,53 @@ mod tests {
             }
         };
 
-        let numtest = |exp| {
-            let (data, _) = test_manage(exp);
+        let realnumtest = |exp| {
+            let (data, _): (f64, f64) = test_manage(exp);
             data
         };
 
-        assert_eq!(numtest("2 3 +"), 5.0);
-        assert_eq!(numtest("2 3 -"), -1.0);
-        assert_eq!(numtest("2 3 *"), 6.0);
-        assert_eq!(numtest("3 2 /"), 1.5);
-        assert_eq!(numtest("3 2 ^"), 9.0);
-        assert_eq!(numtest("3 2/"), 1.5);
-        assert_eq!(numtest("3 2/ 2 * 2^"), 9.0);
-        assert_eq!(numtest("9.0 sqrt"), 3.0);
-        assert_eq!(numtest("10.0 ln"), f64::consts::LN_10);
-        assert_eq!(numtest("100.0 log"), 2.0);
-        assert_eq!(numtest("9.0 3 3 5 sum"), 20.0);
-        assert!((numtest("pi 6 / sin") - 0.5) < 1e-10);
-        assert!((numtest("pi 3 / cos") - 0.5) < 1e-10);
-        assert!((numtest("pi 4 / tan") - 1.0) < 1e-10);
-        assert!((numtest("0.5 asin") - f64::consts::PI / 6.0) < 1e-10);
-        assert!((numtest("0.5 acos") - f64::consts::PI / 3.0) < 1e-10);
-        assert!((numtest("1.0 atan") - f64::consts::PI / 4.0) < 1e-10);
-        assert_eq!(numtest("pi"), f64::consts::PI);
-        assert_eq!(numtest("e"), f64::consts::E);
-        assert_eq!(numtest("60 torad"), f64::consts::PI / 3.0);
-        assert_eq!(numtest("pi 3 / todeg"), 60.0);
-        assert_eq!(numtest("2 3 + 12 *"), 60.0);
-        assert_eq!(numtest("3 3 3 sum sqrt"), 3.0);
-        assert_eq!(numtest("10 3 npr"), 720.0);
-        assert_eq!(numtest("10 3 ncr"), 120.0);
-        assert_eq!(numtest("5 n!"), 120.0);
+        let complexnumtest = |exp| {
+            let (re, im) = test_manage(exp);
+            (re, im)
+        };
+        let complex_assert = |(re, im): (f64, f64), (re2, im2): (f64, f64)| {
+            assert!((re - re2).abs() < 1e-10);
+            assert!((im - im2).abs() < 1e-10);
+        };
+
+        assert_eq!(realnumtest("2 3 +"), 5.0);
+        assert_eq!(realnumtest("2 3 -"), -1.0);
+        assert_eq!(realnumtest("2 3 *"), 6.0);
+        assert_eq!(realnumtest("3 2 /"), 1.5);
+        assert_eq!(realnumtest("3 2 ^"), 9.0);
+        assert_eq!(realnumtest("3 2/"), 1.5);
+        assert_eq!(realnumtest("3 2/ 2 * 2^"), 9.0);
+        assert_eq!(realnumtest("9.0 sqrt"), 3.0);
+        assert_eq!(realnumtest("10.0 ln"), f64::consts::LN_10);
+        assert_eq!(realnumtest("100.0 log"), 2.0);
+        assert_eq!(realnumtest("9.0 3 3 5 sum"), 20.0);
+        assert!((realnumtest("pi 6 / sin") - 0.5) < 1e-10);
+        assert!((realnumtest("pi 3 / cos") - 0.5) < 1e-10);
+        assert!((realnumtest("pi 4 / tan") - 1.0) < 1e-10);
+        assert!((realnumtest("0.5 asin") - f64::consts::PI / 6.0) < 1e-10);
+        assert!((realnumtest("0.5 acos") - f64::consts::PI / 3.0) < 1e-10);
+        assert!((realnumtest("1.0 atan") - f64::consts::PI / 4.0) < 1e-10);
+        assert_eq!(realnumtest("pi"), f64::consts::PI);
+        assert_eq!(realnumtest("e"), f64::consts::E);
+        assert_eq!(realnumtest("60 torad"), f64::consts::PI / 3.0);
+        assert_eq!(realnumtest("pi 3 / todeg"), 60.0);
+        assert_eq!(realnumtest("2 3 + 12 *"), 60.0);
+        assert_eq!(realnumtest("3 3 3 sum sqrt"), 3.0);
+        assert_eq!(realnumtest("10 3 npr"), 720.0);
+        assert_eq!(realnumtest("10 3 ncr"), 120.0);
+        assert_eq!(realnumtest("5 n!"), 120.0);
+        complex_assert(complexnumtest("2+3i 3+4i +"), (5.0, 7.0));
+        complex_assert(complexnumtest("2+3i 3+4i -"), (-1.0, -1.0));
+        complex_assert(complexnumtest("2+3i 3+4i *"), (-6.0, 17.0));
+        complex_assert(complexnumtest("2+3i 3+4i /"), (0.72, 0.04));
+        complex_assert(complexnumtest("2+3i 2 ^"), (-5.0, 12.0));
+        complex_assert(complexnumtest("2+3i 2 ^ 5 +"), (0.0, 12.0));
+        complex_assert(complexnumtest("3+4i abs"), (5.0, 0.0));
         Ok(())
     }
 }
