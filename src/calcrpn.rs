@@ -1,7 +1,5 @@
 use crate::StackData;
 use core::f64;
-use num::complex::Complex;
-use num::complex::ComplexFloat;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 
@@ -42,7 +40,7 @@ pub enum MonomialFunc {
     ATan,
     ToDeg,
     ToRad,
-    ABS,
+    Abs,
     Factorial,
 }
 
@@ -81,7 +79,8 @@ pub enum DegMode {
     Deg,
 }
 
-const STACK_SIZE: usize = 100;
+const STACK_SIZE: usize = 15;
+
 // スタックの管理関数
 pub fn manage_stack(
     expression: &str,
@@ -142,92 +141,69 @@ pub fn manage_stack(
                 }
             },
             // 数値の場合
-            // 数値演算は一旦複素数に変換してから処理し、最後に実数に変換出来るものは変換する
             Expr::Numbers(data) => calstack.push_back(data),
             // 二項演算の場合
             Expr::Binomial(b_func) => {
-                let (pexex, pex) = get_two_item(calstack)?;
-                let (exex, ex) = (pexex.get_complex(), pex.get_complex());
+                let (exex, ex) = get_two_item(calstack)?;
                 let result = match b_func {
                     BinomialFunc::Add => exex + ex,
                     BinomialFunc::Subtract => exex - ex,
                     BinomialFunc::Multiply => exex * ex,
-                    BinomialFunc::Divide => {
-                        if (ex.re, ex.im) == (0f64, 0f64) {
-                            calstack.push_back(pexex);
-                            calstack.push_back(pex);
-                            return Err("Zero Divided Error".to_string());
-                        } else {
-                            exex / ex
-                        }
-                    }
+                    BinomialFunc::Divide => exex / ex,
                     BinomialFunc::Mod => exex % ex,
-                    BinomialFunc::Pow => {
-                        if pex.is_complex() {
-                            return Err("Invalid Data".to_string());
-                        } else {
-                            exex.powf(pex.try_to_real().get_realnumber())
+                    BinomialFunc::Pow => match exex.pow(&ex) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            calstack.push_back(exex);
+                            calstack.push_back(ex);
+                            return Err(e);
                         }
-                    }
-                    BinomialFunc::NPr => {
-                        match permutation(pexex.get_realnumber(), pex.get_realnumber()) {
-                            Ok(result) => Complex::new(result, 0.0),
-                            Err(e) => {
-                                calstack.push_back(pexex);
-                                calstack.push_back(pex);
-                                return Err(e);
-                            }
+                    },
+                    BinomialFunc::NPr => match exex.permutation(&ex) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            calstack.push_back(exex);
+                            calstack.push_back(ex);
+                            return Err(e);
                         }
-                    }
-                    BinomialFunc::NCr => {
-                        match combination(pexex.get_realnumber(), pex.get_realnumber()) {
-                            Ok(result) => Complex::new(result, 0.0),
-                            Err(e) => {
-                                calstack.push_back(pexex);
-                                calstack.push_back(pex);
-                                return Err(e);
-                            }
+                    },
+                    BinomialFunc::NCr => match exex.combination(&ex) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            calstack.push_back(exex);
+                            calstack.push_back(ex);
+                            return Err(e);
                         }
-                    }
+                    },
                 };
-                calstack.push_back(StackData::Complex(result).try_to_real());
+                calstack.push_back(result);
             }
 
             // 単項演算の場合
             Expr::Monomial(m_func) => {
-                let pex = get_one_item(calstack)?;
-                let ex = pex.get_complex();
+                let ex = get_one_item(calstack)?;
                 let result = match m_func {
                     MonomialFunc::Sqrt => ex.sqrt(),
-                    MonomialFunc::Log => ex.log(10.0),
+                    MonomialFunc::Log => ex.log10(),
                     MonomialFunc::Ln => ex.ln(),
-                    MonomialFunc::Sin => {
-                        let ex = to_rad_item(ex, degmode);
-                        ex.sin()
-                    }
-                    MonomialFunc::Cos => {
-                        let ex = to_rad_item(ex, degmode);
-                        ex.cos()
-                    }
-                    MonomialFunc::Tan => {
-                        let ex = to_rad_item(ex, degmode);
-                        ex.tan()
-                    }
-                    MonomialFunc::ASin => to_deg_item(ex.asin(), degmode),
-                    MonomialFunc::ACos => to_deg_item(ex.acos(), degmode),
-                    MonomialFunc::ATan => to_deg_item(ex.atan(), degmode),
-                    MonomialFunc::ToDeg => to_deg(ex),
-                    MonomialFunc::ToRad => to_rad(ex),
-                    MonomialFunc::Factorial => {
-                        if ex.re < 0.0 || !is_integer(ex) {
-                            calstack.push_back(pex);
-                            return Err("Invalid Data".to_string());
+                    MonomialFunc::Sin => ex.sin(degmode),
+                    MonomialFunc::Cos => ex.cos(degmode),
+                    MonomialFunc::Tan => ex.tan(degmode),
+                    MonomialFunc::ASin => ex.asin(degmode),
+                    MonomialFunc::ACos => ex.acos(degmode),
+                    MonomialFunc::ATan => ex.atan(degmode),
+                    MonomialFunc::ToDeg => ex.to_deg()?,
+                    MonomialFunc::ToRad => ex.to_rad()?,
+                    MonomialFunc::Factorial => match ex.factorial() {
+                        Ok(result) => result,
+                        Err(e) => {
+                            calstack.push_back(ex);
+                            return Err(e);
                         }
-                        Complex::new(factorial(1.0, ex.re)?, 0.0)
-                    }
-                    MonomialFunc::ABS => Complex::new(ex.abs(), 0.0),
+                    },
+                    MonomialFunc::Abs => ex.abs(),
                 };
-                calstack.push_back(StackData::Complex(result).try_to_real());
+                calstack.push_back(result);
             }
             // スタック操作・演算の場合
             Expr::Opstack(operate) => match operate {
@@ -264,8 +240,8 @@ pub fn manage_stack(
                     }
                 }
                 OperateStack::Sum => {
-                    if calstack.iter().all(StackData::is_number) {
-                        let sum_result = calstack.iter().map(|x| x.get_realnumber()).sum();
+                    if calstack.iter().all(StackData::is_realnumber) {
+                        let sum_result = calstack.iter().map(|x| x.get_realnumber().unwrap()).sum();
                         calstack.clear();
                         calstack.push_back(StackData::Number(sum_result));
                     } else {
@@ -326,7 +302,7 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
             "sum" => Ok(Expr::Opstack(OperateStack::Sum)),
             "torad" => Ok(Expr::Monomial(MonomialFunc::ToRad)),
             "todeg" => Ok(Expr::Monomial(MonomialFunc::ToDeg)),
-            "abs" => Ok(Expr::Monomial(MonomialFunc::ABS)),
+            "abs" => Ok(Expr::Monomial(MonomialFunc::Abs)),
             "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
             "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
             _ => match memo_mode {
@@ -380,50 +356,6 @@ fn get_one_item(calstack: &mut VecDeque<StackData>) -> Result<StackData, String>
         }
     }
 }
-// 角度をラジアンに変換
-fn to_rad(val: Complex<f64>) -> Complex<f64> {
-    val / 180.0 * f64::consts::PI
-}
-// ラジアンを角度に変換
-fn to_deg(val: Complex<f64>) -> Complex<f64> {
-    val / f64::consts::PI * 180.0
-}
-//　値をラジアンに変換する
-fn to_rad_item(val: Complex<f64>, mode: &DegMode) -> Complex<f64> {
-    match mode {
-        DegMode::Rad => val,
-        DegMode::Deg => to_rad(val),
-    }
-}
-// 値をDegreeに変換する
-fn to_deg_item(val: Complex<f64>, mode: &DegMode) -> Complex<f64> {
-    match mode {
-        DegMode::Rad => val,
-        DegMode::Deg => to_deg(val),
-    }
-}
-// 整数かどうかを判定
-fn is_integer(val: Complex<f64>) -> bool {
-    val.re.fract() == 0.0 && val.im == 0.0
-}
-// 階乗計算
-fn factorial(start: f64, end: f64) -> Result<f64, String> {
-    if start > end || start < 0.0 || start.fract() != 0.0 || end.fract() != 0.0 {
-        Err("Invalid Data".to_string())
-    } else {
-        Ok((start as u64..=end as u64).fold(1.0, |acc, x| acc * x as f64))
-    }
-}
-// 順列計算
-fn permutation(n: f64, r: f64) -> Result<f64, String> {
-    // permutation(5,3) = 5!/(5-3)! = 5*4*3
-    factorial(n - r + 1.0, n)
-}
-// 組み合わせ計算
-fn combination(n: f64, r: f64) -> Result<f64, String> {
-    // combination(5,3) = 5!/(3!(5-3)!) = 5*4*3/(3*2*1)
-    Ok(permutation(n, r)? / factorial(1.0, r)?)
-}
 
 #[cfg(test)]
 mod tests {
@@ -475,6 +407,8 @@ mod tests {
         assert_eq!(realnumtest("3 2 ^"), 9.0);
         assert_eq!(realnumtest("3 2/"), 1.5);
         assert_eq!(realnumtest("3 2/ 2 * 2^"), 9.0);
+        assert_eq!(realnumtest("15 4 %"), 3.0);
+        assert_eq!(realnumtest("51 19 %"), 13.0);
         assert_eq!(realnumtest("9.0 sqrt"), 3.0);
         assert_eq!(realnumtest("10.0 ln"), f64::consts::LN_10);
         assert_eq!(realnumtest("100.0 log"), 2.0);
@@ -487,8 +421,8 @@ mod tests {
         assert!((realnumtest("1.0 atan") - f64::consts::PI / 4.0) < 1e-10);
         assert_eq!(realnumtest("pi"), f64::consts::PI);
         assert_eq!(realnumtest("e"), f64::consts::E);
-        assert_eq!(realnumtest("60 torad"), f64::consts::PI / 3.0);
-        assert_eq!(realnumtest("pi 3 / todeg"), 60.0);
+        assert!((realnumtest("60 torad") - f64::consts::PI / 3.0).abs() < 1e-10);
+        assert!((realnumtest("pi 3 / todeg") - 60.0).abs() < 1e-10);
         assert_eq!(realnumtest("2 3 + 12 *"), 60.0);
         assert_eq!(realnumtest("3 3 3 sum sqrt"), 3.0);
         assert_eq!(realnumtest("10 3 npr"), 720.0);
