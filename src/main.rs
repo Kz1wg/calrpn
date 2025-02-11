@@ -301,7 +301,7 @@ impl StackData {
     }
 }
 
-const RESULT_DISPLAY_LENGTH: u16 = 12;
+// const RESULT_DISPLAY_LENGTH: u16 = 12;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
@@ -330,7 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     loop {
-        let result_len = RESULT_DISPLAY_LENGTH.min(stack.len() as u16) + 2;
+        let result_len = calcrpn::STACK_SIZE.min(stack.len()) + 2;
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -340,7 +340,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(4),
-                        Constraint::Length(result_len),
+                        Constraint::Length(result_len as u16),
                         Constraint::Length(2),
                     ]
                     .as_ref(),
@@ -381,7 +381,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 入力のカーソルを表示
         let input_col = 1;
-        let input_row = result_len + 8;
+        let input_row = result_len as u16 + 8;
         let cursor_col = input_col + input.len() as u16;
 
         execute!(

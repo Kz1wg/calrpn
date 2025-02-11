@@ -59,7 +59,7 @@ pub enum Constant {
     E,
 }
 
-// スタック操作の列挙型
+// Stack & Mode操作の列挙型
 #[derive(Debug)]
 pub enum OperateStack {
     Swap,
@@ -79,7 +79,7 @@ pub enum DegMode {
     Deg,
 }
 
-const STACK_SIZE: usize = 15;
+pub const STACK_SIZE: usize = 12;
 
 // スタックの管理関数
 pub fn manage_stack(
@@ -261,10 +261,11 @@ pub fn manage_stack(
             }
         }
     }
-    // スタックが一定以上になった場合、先頭の要素 wを削除
+    // スタックが一定以上になった場合、先頭の要素を削除
     if calstack.len() >= STACK_SIZE {
         calstack.pop_front();
-        return Err("Stack is Full".to_string());
+        calstack.shrink_to_fit();
+        // return Err("Stack is Full".to_string());
     };
     Ok(())
 }
