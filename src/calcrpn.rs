@@ -1,4 +1,4 @@
-use crate::StackData;
+use crate::CalcNum;
 use core::f64;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 // 演算時要素の列挙型
 #[derive(Debug)]
 pub enum Expr {
-    Numbers(StackData),
+    Numbers(CalcNum),
     Binomial(BinomialFunc),
     Monomial(MonomialFunc),
     Const(Constant),
@@ -84,9 +84,9 @@ pub const STACK_SIZE: usize = 12;
 // スタックの管理関数
 pub fn manage_stack(
     expression: &str,
-    calstack: &mut VecDeque<StackData>,
+    calstack: &mut VecDeque<CalcNum>,
     degmode: &mut DegMode,
-    memory_map: &mut BTreeMap<String, StackData>,
+    memory_map: &mut BTreeMap<String, CalcNum>,
     memo_mode: &mut Option<Memorize>,
 ) -> Result<(), String> {
     // 式を分割するクロージャ
@@ -240,10 +240,10 @@ pub fn manage_stack(
                     }
                 }
                 OperateStack::Sum => {
-                    if calstack.iter().all(StackData::is_realnumber) {
+                    if calstack.iter().all(CalcNum::is_realnumber) {
                         let sum_result = calstack.iter().map(|x| x.get_realnumber().unwrap()).sum();
                         calstack.clear();
-                        calstack.push_back(StackData::Number(sum_result));
+                        calstack.push_back(CalcNum::Number(sum_result));
                     } else {
                         return Err("Invalid Data".to_string());
                     }
@@ -257,7 +257,7 @@ pub fn manage_stack(
                     Constant::Pi => f64::consts::PI,
                     Constant::E => f64::consts::E,
                 };
-                calstack.push_back(StackData::Number(result));
+                calstack.push_back(CalcNum::Number(result));
             }
         }
     }
@@ -271,7 +271,7 @@ pub fn manage_stack(
 }
 
 fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr, String> {
-    match expression.to_lowercase().parse::<StackData>() {
+    match expression.to_lowercase().parse::<CalcNum>() {
         Ok(data) => Ok(Expr::Numbers(data)),
         Err(_) => match expression {
             "+" => Ok(Expr::Binomial(BinomialFunc::Add)),
@@ -336,7 +336,7 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
 }
 
 // スタックから2つの要素を取り出す
-fn get_two_item(calstack: &mut VecDeque<StackData>) -> Result<(StackData, StackData), String> {
+fn get_two_item(calstack: &mut VecDeque<CalcNum>) -> Result<(CalcNum, CalcNum), String> {
     if calstack.len() < 2 {
         Err("Stack is too short".to_string())
     } else {
@@ -347,7 +347,7 @@ fn get_two_item(calstack: &mut VecDeque<StackData>) -> Result<(StackData, StackD
     }
 }
 // スタックから1つの要素を取り出す
-fn get_one_item(calstack: &mut VecDeque<StackData>) -> Result<StackData, String> {
+fn get_one_item(calstack: &mut VecDeque<CalcNum>) -> Result<CalcNum, String> {
     if calstack.is_empty() {
         Err("Stack is Empty".to_string())
     } else {
@@ -361,7 +361,7 @@ fn get_one_item(calstack: &mut VecDeque<StackData>) -> Result<StackData, String>
 #[cfg(test)]
 mod tests {
 
-    use crate::{manage_stack, DegMode, StackData};
+    use crate::{manage_stack, CalcNum, DegMode};
     use core::f64;
     use std::collections::{BTreeMap, VecDeque};
 
@@ -382,8 +382,8 @@ mod tests {
                 Err(e) => eprintln!("{e}"),
             };
             match &teststack[0] {
-                StackData::Number(data) => (*data, 0.0),
-                StackData::Complex(data) => (data.re, data.im),
+                CalcNum::Number(data) => (*data, 0.0),
+                CalcNum::Complex(data) => (data.re, data.im),
             }
         };
 
@@ -397,8 +397,8 @@ mod tests {
             (re, im)
         };
         let complex_assert = |(re, im): (f64, f64), (re2, im2): (f64, f64)| {
-            assert!((re - re2).abs() < 1e-10);
-            assert!((im - im2).abs() < 1e-10);
+            assert!((re - re2).abs() < 1e-6);
+            assert!((im - im2).abs() < 1e-6);
         };
 
         assert_eq!(realnumtest("2 3 +"), 5.0);
@@ -429,6 +429,15 @@ mod tests {
         assert_eq!(realnumtest("10 3 npr"), 720.0);
         assert_eq!(realnumtest("10 3 ncr"), 120.0);
         assert_eq!(realnumtest("5 n!"), 120.0);
+        complex_assert(complexnumtest("-10i log"), (1.0, -0.682188));
+        complex_assert(complexnumtest("-10i ln"), (2.302585, -1.570796));
+        complex_assert(complexnumtest("pi 1i*  sin"), (0.0, 11.548739));
+        complex_assert(
+            complexnumtest("pi 3 /  pi -4i / + cos"),
+            (0.662305, -0.752291),
+        );
+        complex_assert(complexnumtest("-9 sqrt"), (0.0, 3.0));
+        complex_assert(complexnumtest("2+3i 3+4i +"), (5.0, 7.0));
         complex_assert(complexnumtest("2+3i 3+4i +"), (5.0, 7.0));
         complex_assert(complexnumtest("2+3i 3+4i -"), (-1.0, -1.0));
         complex_assert(complexnumtest("2+3i 3+4i *"), (-6.0, 17.0));

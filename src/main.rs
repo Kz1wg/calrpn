@@ -1,5 +1,4 @@
 mod calcrpn;
-// mod finance;
 use calcrpn::{manage_stack, DegMode, Memorize};
 use num::complex::Complex;
 use std::ops::{Add, Div, Mul, Rem, Sub};
@@ -28,275 +27,259 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-enum StackData {
+enum CalcNum {
     Number(f64),
     Complex(Complex<f64>),
 }
-impl FromStr for StackData {
+impl FromStr for CalcNum {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.parse::<f64>() {
-            Ok(val) => Ok(StackData::Number(val)),
+            Ok(val) => Ok(CalcNum::Number(val)),
             Err(_) => match s.parse::<Complex<f64>>() {
-                Ok(val) => Ok(StackData::Complex(val)),
+                Ok(val) => Ok(CalcNum::Complex(val)),
                 Err(_) => Err("Parse Error".to_string()),
             },
         }
     }
 }
-impl Add for StackData {
+impl Add for CalcNum {
     type Output = Self;
     fn add(self, other: Self) -> Self {
         match (self, other) {
-            (StackData::Number(a), StackData::Number(b)) => StackData::Number(a + b),
-            (StackData::Complex(a), StackData::Complex(b)) => StackData::Complex(a + b),
-            (StackData::Number(a), StackData::Complex(b)) => {
-                StackData::Complex(Complex::new(a, 0.0) + b)
-            }
-            (StackData::Complex(a), StackData::Number(b)) => {
-                StackData::Complex(a + Complex::new(b, 0.0))
-            }
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a + b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a + b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) + b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a + Complex::new(b, 0.0)),
         }
     }
 }
-impl Sub for StackData {
+impl Sub for CalcNum {
     type Output = Self;
     fn sub(self, other: Self) -> Self {
         match (self, other) {
-            (StackData::Number(a), StackData::Number(b)) => StackData::Number(a - b),
-            (StackData::Complex(a), StackData::Complex(b)) => StackData::Complex(a - b),
-            (StackData::Number(a), StackData::Complex(b)) => {
-                StackData::Complex(Complex::new(a, 0.0) - b)
-            }
-            (StackData::Complex(a), StackData::Number(b)) => {
-                StackData::Complex(a - Complex::new(b, 0.0))
-            }
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a - b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a - b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) - b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a - Complex::new(b, 0.0)),
         }
     }
 }
-impl Mul for StackData {
+impl Mul for CalcNum {
     type Output = Self;
     fn mul(self, other: Self) -> Self {
         match (self, other) {
-            (StackData::Number(a), StackData::Number(b)) => StackData::Number(a * b),
-            (StackData::Complex(a), StackData::Complex(b)) => StackData::Complex(a * b),
-            (StackData::Number(a), StackData::Complex(b)) => {
-                StackData::Complex(Complex::new(a, 0.0) * b)
-            }
-            (StackData::Complex(a), StackData::Number(b)) => {
-                StackData::Complex(a * Complex::new(b, 0.0))
-            }
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a * b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a * b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) * b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a * Complex::new(b, 0.0)),
         }
     }
 }
 
-impl Div for StackData {
+impl Div for CalcNum {
     type Output = Self;
     fn div(self, other: Self) -> Self {
         match (self, other) {
-            (StackData::Number(a), StackData::Number(b)) => StackData::Number(a / b),
-            (StackData::Complex(a), StackData::Complex(b)) => StackData::Complex(a / b),
-            (StackData::Number(a), StackData::Complex(b)) => {
-                StackData::Complex(Complex::new(a, 0.0) / b)
-            }
-            (StackData::Complex(a), StackData::Number(b)) => {
-                StackData::Complex(a / Complex::new(b, 0.0))
-            }
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a / b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a / b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) / b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a / Complex::new(b, 0.0)),
         }
     }
 }
-impl Rem for StackData {
+impl Rem for CalcNum {
     type Output = Self;
     fn rem(self, other: Self) -> Self {
         match (self, other) {
-            (StackData::Number(a), StackData::Number(b)) => StackData::Number(a % b),
-            (StackData::Complex(a), StackData::Complex(b)) => StackData::Complex(a % b),
-            (StackData::Number(a), StackData::Complex(b)) => {
-                StackData::Complex(Complex::new(a, 0.0) % b)
-            }
-            (StackData::Complex(a), StackData::Number(b)) => {
-                StackData::Complex(a % Complex::new(b, 0.0))
-            }
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a % b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a % b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) % b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a % Complex::new(b, 0.0)),
         }
     }
 }
-impl StackData {
+impl CalcNum {
     fn num_format(&self, n_place: usize) -> String {
         match self {
-            StackData::Number(val) => match self.is_integer() {
+            CalcNum::Number(val) => match self.is_integer() {
                 true => format!("{:.0}", val),
                 false => format!("{:.1$}", val, n_place),
             },
-            StackData::Complex(val) => {
+            CalcNum::Complex(val) => {
                 format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
             }
         }
     }
     fn is_realnumber(&self) -> bool {
-        matches!(self, StackData::Number(_))
+        matches!(self, CalcNum::Number(_))
     }
 
     fn is_integer(&self) -> bool {
         match self {
-            StackData::Number(val) => val.fract() == 0.0,
+            CalcNum::Number(val) => val.fract() == 0.0,
             _ => false,
         }
     }
 
     fn get_realnumber(&self) -> Result<f64, String> {
         match self {
-            StackData::Number(val) => Ok(*val),
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Number(val) => Ok(*val),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
-    fn pow(&self, n: &Self) -> Result<StackData, String> {
+    fn pow(&self, n: &Self) -> Result<CalcNum, String> {
         if !n.is_realnumber() {
             return Err("Exponent must be real number".to_string());
         };
         let n = n.get_realnumber()?;
         match self {
-            StackData::Number(val) => Ok(StackData::Number(val.powf(n))),
-            StackData::Complex(val) => Ok(StackData::Complex(val.powf(n))),
+            CalcNum::Number(val) => Ok(CalcNum::Number(val.powf(n))),
+            CalcNum::Complex(val) => Ok(CalcNum::Complex(val.powf(n))),
         }
     }
-    fn log10(&self) -> StackData {
+    fn log10(&self) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(val.log10()),
-            StackData::Complex(val) => StackData::Complex(val.log10()),
+            CalcNum::Number(val) => CalcNum::Number(val.log10()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.log10()),
         }
     }
-    fn ln(&self) -> StackData {
+    fn ln(&self) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(val.ln()),
-            StackData::Complex(val) => StackData::Complex(val.ln()),
-        }
-    }
-
-    fn sqrt(&self) -> StackData {
-        match self {
-            StackData::Number(val) => StackData::Number(val.sqrt()),
-            StackData::Complex(val) => StackData::Complex(val.sqrt()),
+            CalcNum::Number(val) => CalcNum::Number(val.ln()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.ln()),
         }
     }
 
-    fn sin(&self, degmode: &DegMode) -> StackData {
+    fn sqrt(&self) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => {
+                if *val < 0.0 {
+                    CalcNum::Complex(Complex::new(0.0, val.abs().sqrt()))
+                } else {
+                    CalcNum::Number(val.sqrt())
+                }
+            }
+            CalcNum::Complex(val) => CalcNum::Complex(val.sqrt()),
+        }
+    }
+
+    fn sin(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.to_radians().sin(),
                 DegMode::Rad => val.sin(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.sin()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.sin()),
         }
     }
-    fn cos(&self, degmode: &DegMode) -> StackData {
+    fn cos(&self, degmode: &DegMode) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.to_radians().cos(),
                 DegMode::Rad => val.cos(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.cos()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.cos()),
         }
     }
-    fn tan(&self, degmode: &DegMode) -> StackData {
+    fn tan(&self, degmode: &DegMode) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.to_radians().tan(),
                 DegMode::Rad => val.tan(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.tan()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.tan()),
         }
     }
-    fn asin(&self, degmode: &DegMode) -> StackData {
+    fn asin(&self, degmode: &DegMode) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.asin().to_degrees(),
                 DegMode::Rad => val.asin(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.asin()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.asin()),
         }
     }
-    fn acos(&self, degmode: &DegMode) -> StackData {
+    fn acos(&self, degmode: &DegMode) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.acos().to_degrees(),
                 DegMode::Rad => val.acos(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.acos()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.acos()),
         }
     }
-    fn atan(&self, degmode: &DegMode) -> StackData {
+    fn atan(&self, degmode: &DegMode) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(match degmode {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
                 DegMode::Deg => val.atan().to_degrees(),
                 DegMode::Rad => val.atan(),
             }),
-            StackData::Complex(val) => StackData::Complex(val.atan()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.atan()),
         }
     }
-    fn to_deg(&self) -> Result<StackData, String> {
+    fn to_deg(&self) -> Result<CalcNum, String> {
         match self {
-            StackData::Number(val) => Ok(StackData::Number(val.to_degrees())),
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_degrees())),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
 
-    fn to_rad(&self) -> Result<StackData, String> {
+    fn to_rad(&self) -> Result<CalcNum, String> {
         match self {
-            StackData::Number(val) => Ok(StackData::Number(val.to_radians())),
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_radians())),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
 
-    fn factorial(&self) -> Result<StackData, String> {
+    fn factorial(&self) -> Result<CalcNum, String> {
         // 階乗計算
         if !self.is_integer() {
             return Err("Factorial is only supported for integer".to_string());
         }
         match self {
-            StackData::Number(val) => {
-                Ok(StackData::Number((1..=*val as u64).product::<u64>() as f64))
-            }
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Number(val) => Ok(CalcNum::Number((1..=*val as u64).product::<u64>() as f64)),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
 
-    fn permutation(&self, n: &Self) -> Result<StackData, String> {
+    fn permutation(&self, n: &Self) -> Result<CalcNum, String> {
         // 順列計算
         if !self.is_integer() || !n.is_integer() {
             return Err("Permutation is only supported for integer".to_string());
         }
         match self {
-            StackData::Number(val) => Ok(StackData::Number(
+            CalcNum::Number(val) => Ok(CalcNum::Number(
                 (1..=*val as u64)
                     .rev()
                     .take(n.get_realnumber()? as usize)
                     .product::<u64>() as f64,
             )),
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
 
-    fn combination(&self, n: &Self) -> Result<StackData, String> {
+    fn combination(&self, n: &Self) -> Result<CalcNum, String> {
         // 組み合わせ計算
         if !self.is_integer() || !n.is_integer() {
             return Err("Combination is only supported for integer".to_string());
         }
         match self {
-            StackData::Number(val) => Ok(StackData::Number(
+            CalcNum::Number(val) => Ok(CalcNum::Number(
                 (1..=*val as u64)
                     .rev()
                     .take(n.get_realnumber()? as usize)
                     .product::<u64>() as f64
                     / (1..=n.get_realnumber()? as u64).product::<u64>() as f64,
             )),
-            StackData::Complex(_val) => Err("Complex number is not supported".to_string()),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
         }
     }
 
-    fn abs(&self) -> StackData {
+    fn abs(&self) -> CalcNum {
         match self {
-            StackData::Number(val) => StackData::Number(val.abs()),
-            StackData::Complex(val) => StackData::Number(val.norm()),
+            CalcNum::Number(val) => CalcNum::Number(val.abs()),
+            CalcNum::Complex(val) => CalcNum::Number(val.norm()),
         }
     }
 }
@@ -309,8 +292,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, EnterAlternateScreen, DisableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut stack: VecDeque<StackData> = VecDeque::new();
-    let mut memo_map: BTreeMap<String, StackData> = BTreeMap::new();
+    let mut stack: VecDeque<CalcNum> = VecDeque::new();
+    let mut memo_map: BTreeMap<String, CalcNum> = BTreeMap::new();
     let mut degmode = DegMode::Deg;
     let mut memo_mode: Option<Memorize> = None;
     let mut input = String::new();
@@ -517,14 +500,14 @@ fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
         .fold("Hist: ".to_string(), |acc, x| acc + x + " ← ");
 }
 
-fn update_memo(memo_map: &BTreeMap<String, StackData>, memory: &mut String) {
+fn update_memo(memo_map: &BTreeMap<String, CalcNum>, memory: &mut String) {
     // memo_mapをStringに変換しスペースで区切る
     for (key, sval) in memo_map.iter() {
         memory.push_str(&format!("{}: {} ", key, sval.num_format(2)));
     }
 }
 
-fn update_stack(stack: &VecDeque<StackData>, result: &mut String, decimal_point: usize) {
+fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: usize) {
     // 改行で区切る。windowsの場合は\r\n, Mac|linuxの場合は\n
     let sepalator = if cfg!(target_os = "windows") {
         "\r\n"
