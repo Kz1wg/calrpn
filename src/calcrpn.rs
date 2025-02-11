@@ -264,8 +264,6 @@ pub fn manage_stack(
     // スタックが一定以上になった場合、先頭の要素を削除
     if calstack.len() >= STACK_SIZE {
         calstack.pop_front();
-        calstack.shrink_to_fit();
-        // return Err("Stack is Full".to_string());
     };
     Ok(())
 }
@@ -328,7 +326,8 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
                         *memo_mode = None;
                         Ok(Expr::Memo(Memorize::Clear))
                     }
-                    _ => Err("Invalid Data".to_string()),
+                    // _ => Err("Invalid Data".to_string()),
+                    _ => Ok(Expr::Memo(Memorize::Recall(Some(expression.to_string())))),
                 },
             },
         },
@@ -397,8 +396,8 @@ mod tests {
             (re, im)
         };
         let complex_assert = |(re, im): (f64, f64), (re2, im2): (f64, f64)| {
-            assert!((re - re2).abs() < 1e-6);
-            assert!((im - im2).abs() < 1e-6);
+            assert!((re - re2).abs() < 1e-10);
+            assert!((im - im2).abs() < 1e-10);
         };
 
         assert_eq!(realnumtest("2 3 +"), 5.0);
@@ -429,14 +428,15 @@ mod tests {
         assert_eq!(realnumtest("10 3 npr"), 720.0);
         assert_eq!(realnumtest("10 3 ncr"), 120.0);
         assert_eq!(realnumtest("5 n!"), 120.0);
-        complex_assert(complexnumtest("-10i log"), (1.0, -0.682188));
-        complex_assert(complexnumtest("-10i ln"), (2.302585, -1.570796));
-        complex_assert(complexnumtest("pi 1i*  sin"), (0.0, 11.548739));
+        complex_assert(complexnumtest("-10i log"), (1.0, -0.6821881769));
+        complex_assert(complexnumtest("-10i ln"), (2.302585093, -1.5707963268));
+        complex_assert(complexnumtest("pi 1i*  sin"), (0.0, 11.5487393573));
         complex_assert(
             complexnumtest("pi 3 /  pi -4i / + cos"),
-            (0.662305, -0.752291),
+            (0.6623045446, -0.7522911202),
         );
         complex_assert(complexnumtest("-9 sqrt"), (0.0, 3.0));
+        complex_assert(complexnumtest("2 3+4i +"), (5.0, 4.0));
         complex_assert(complexnumtest("2+3i 3+4i +"), (5.0, 7.0));
         complex_assert(complexnumtest("2+3i 3+4i +"), (5.0, 7.0));
         complex_assert(complexnumtest("2+3i 3+4i -"), (-1.0, -1.0));
@@ -445,6 +445,13 @@ mod tests {
         complex_assert(complexnumtest("2+3i 2 ^"), (-5.0, 12.0));
         complex_assert(complexnumtest("2+3i 2 ^ 5 +"), (0.0, 12.0));
         complex_assert(complexnumtest("3+4i abs"), (5.0, 0.0));
+        complex_assert(
+            complexnumtest("e pi 3 / i * ^"),
+            complexnumtest("pi 3 / cos pi 3 / sin i * +"),
+        );
+        complex_assert(complexnumtest("2+3i 2^"), (-5.0, 12.0));
+        complex_assert(complexnumtest("i i ^"), complexnumtest("e pi -2 / ^"));
+        complex_assert(complexnumtest("i i ^"), complexnumtest("e pi -2 / ^"));
         Ok(())
     }
 }

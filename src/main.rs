@@ -129,13 +129,17 @@ impl CalcNum {
         }
     }
     fn pow(&self, n: &Self) -> Result<CalcNum, String> {
-        if !n.is_realnumber() {
-            return Err("Exponent must be real number".to_string());
-        };
-        let n = n.get_realnumber()?;
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(val.powf(n))),
-            CalcNum::Complex(val) => Ok(CalcNum::Complex(val.powf(n))),
+        // if !n.is_realnumber() {
+        //     return Err("Exponent must be real number".to_string());
+        // };
+        // let n = n.get_realnumber()?;
+        match (self, n) {
+            (CalcNum::Number(val), CalcNum::Number(n)) => Ok(CalcNum::Number(val.powf(*n))),
+            (CalcNum::Complex(val), CalcNum::Number(n)) => Ok(CalcNum::Complex(val.powf(*n))),
+            (CalcNum::Number(val), CalcNum::Complex(n)) => {
+                Ok(CalcNum::Complex(Complex::new(*val, 0.0).powc(*n)))
+            }
+            (CalcNum::Complex(val), CalcNum::Complex(n)) => Ok(CalcNum::Complex(val.powc(*n))),
         }
     }
     fn log10(&self) -> CalcNum {
