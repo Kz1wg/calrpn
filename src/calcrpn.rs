@@ -43,6 +43,8 @@ pub enum MonomialFunc {
     ToRad,
     Abs,
     Factorial,
+    ToPolar,
+    ToRec,
 }
 
 // 記憶領域の列挙型
@@ -272,6 +274,36 @@ impl CalcNum {
             CalcNum::Complex(val) => CalcNum::Complex(val.atan()),
         }
     }
+
+    fn to_polar(&self, degmode: &DegMode) -> Result<CalcNum, String> {
+        match self {
+            CalcNum::Number(_val) => Err("Invalid Type".to_string()),
+            CalcNum::Complex(val) => {
+                let result = val.to_polar();
+                let angle = match degmode {
+                    DegMode::Deg => CalcNum::Number(result.1).to_deg()?,
+                    DegMode::Rad => CalcNum::Number(result.1),
+                };
+                Ok(CalcNum::Complex(Complex {
+                    re: result.0,
+                    im: angle.get_realnumber()?,
+                }))
+            }
+        }
+    }
+    fn to_rectangular(&self, degmode: &DegMode) -> Result<CalcNum, String> {
+        match self {
+            CalcNum::Complex(polardata) => {
+                let theta = match degmode {
+                    DegMode::Deg => polardata.im.to_radians(),
+                    DegMode::Rad => polardata.im,
+                };
+                Ok(CalcNum::Complex(Complex::from_polar(polardata.re, theta)))
+            }
+            CalcNum::Number(_) => Err("Invalid Type".to_ascii_lowercase()),
+        }
+    }
+
     fn to_deg(&self) -> Result<CalcNum, String> {
         match self {
             CalcNum::Number(val) => Ok(CalcNum::Number(val.to_degrees())),
@@ -451,8 +483,20 @@ pub fn manage_stack(
                     MonomialFunc::ASin => ex.asin(degmode),
                     MonomialFunc::ACos => ex.acos(degmode),
                     MonomialFunc::ATan => ex.atan(degmode),
-                    MonomialFunc::ToDeg => ex.to_deg()?,
-                    MonomialFunc::ToRad => ex.to_rad()?,
+                    MonomialFunc::ToDeg => match ex.to_deg() {
+                        Ok(deg) => deg,
+                        Err(e) => {
+                            calstack.push_back(ex);
+                            return Err(e.to_string());
+                        }
+                    },
+                    MonomialFunc::ToRad => match ex.to_rad() {
+                        Ok(rad) => rad,
+                        Err(e) => {
+                            calstack.push_back(ex);
+                            return Err(e.to_string());
+                        }
+                    },
                     MonomialFunc::Factorial => match ex.factorial() {
                         Ok(result) => result,
                         Err(e) => {
@@ -461,6 +505,20 @@ pub fn manage_stack(
                         }
                     },
                     MonomialFunc::Abs => ex.abs(),
+                    MonomialFunc::ToPolar => match ex.to_polar(degmode) {
+                        Ok(polardata) => polardata,
+                        Err(e) => {
+                            calstack.push_back(ex);
+                            return Err(e);
+                        }
+                    },
+                    MonomialFunc::ToRec => match ex.to_rectangular(degmode) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            calstack.push_back(ex);
+                            return Err(e);
+                        }
+                    },
                 };
                 calstack.push_back(result);
             }
@@ -554,6 +612,8 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
             "ln" => Ok(Expr::Monomial(MonomialFunc::Ln)),
             "npr" | "perm" => Ok(Expr::Binomial(BinomialFunc::NPr)),
             "ncr" | "comb" => Ok(Expr::Binomial(BinomialFunc::NCr)),
+            "torec" | "torect" | "rec" | "rect" => Ok(Expr::Monomial(MonomialFunc::ToRec)),
+            "topol" | "topolar" | "polar" | "pol" => Ok(Expr::Monomial(MonomialFunc::ToPolar)),
             "n!" | "!" | "fact" | "factorial" => Ok(Expr::Monomial(MonomialFunc::Factorial)),
             "pi" => Ok(Expr::Const(Constant::Pi)),
             "e" => Ok(Expr::Const(Constant::E)),
@@ -710,6 +770,15 @@ mod tests {
         complex_assert(complexnumtest("2+3i 2^"), (-5.0, 12.0));
         complex_assert(complexnumtest("i i ^"), complexnumtest("e pi -2 / ^"));
         complex_assert(complexnumtest("i i ^"), complexnumtest("e pi -2 / ^"));
+        complex_assert(
+            complexnumtest("1 pi 6 / i * + torec"),
+            complexnumtest("pi 6 / cos pi 6 / sin i * +"),
+        );
+        complex_assert(
+            complexnumtest("pi 6 / cos pi 6 / sin i * + topolar"),
+            complexnumtest("1 pi 6 / i * + "),
+        );
+
         Ok(())
     }
 }

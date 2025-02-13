@@ -138,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             decimal_point = fix;
                         }
                         "clv" => {
+                            // 特定のmemo keyを削除
                             memo_map.remove_entry(app_command[1]);
                             update_log(&mut input_log, &mut message);
                             update_memo(&memo_map, &mut memory);
@@ -157,13 +158,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &mut memo_mode,
                 ) {
                     Ok(()) => {
-                        result.clear();
-                        memory.clear();
                         // 入力を履歴に追加
                         readline.add_history_entry(input.clone())?;
-                        // スタックを更新
-                        update_stack(&stack, &mut result, decimal_point);
-                        update_memo(&memo_map, &mut memory);
+                        // // スタックを更新
+                        // update_stack(&stack, &mut result, decimal_point);
+                        // update_memo(&memo_map, &mut memory);
                         // undo用スタックに保持
                         last_stackresult = (temp_stack, temp_result);
                         update_log(&mut input_log, &mut message);
@@ -173,6 +172,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         input_log.pop_back();
                     }
                 }
+                result.clear();
+                memory.clear();
+                update_stack(&stack, &mut result, decimal_point);
+                // update_log(&mut input_log, &mut message);
+                update_memo(&memo_map, &mut memory);
             }
         }
     }
@@ -209,7 +213,7 @@ fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: u
     };
     for (i, sval) in stack.iter().enumerate().rev().take(10).rev() {
         result.push_str(sval.num_format(decimal_point).as_ref());
-        if i < stack.len() - 1 {
+        if i < stack.len().max(1) - 1 {
             result.push_str(sepalator);
         }
     }
