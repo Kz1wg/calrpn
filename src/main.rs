@@ -175,7 +175,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 result.clear();
                 memory.clear();
                 update_stack(&stack, &mut result, decimal_point);
-                // update_log(&mut input_log, &mut message);
                 update_memo(&memo_map, &mut memory);
             }
         }
@@ -200,7 +199,7 @@ fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
 fn update_memo(memo_map: &BTreeMap<String, CalcNum>, memory: &mut String) {
     // memo_mapをStringに変換しスペースで区切る
     for (key, sval) in memo_map.iter() {
-        memory.push_str(&format!("{}: {} ", key, sval.num_format(2)));
+        memory.push_str(&format!("{} -> {} ", key, sval.num_format(2)));
     }
 }
 
