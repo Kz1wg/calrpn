@@ -1,7 +1,5 @@
 mod calcrpn;
-use calcrpn::{manage_stack, DegMode, Memorize};
-use num::complex::Complex;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use calcrpn::{manage_stack, CalcNum, DegMode, Memorize};
 use tui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -18,302 +16,40 @@ use rustyline::{config::Configurer, DefaultEditor};
 use std::{
     collections::{BTreeMap, VecDeque},
     io,
-    str::FromStr,
 };
-
-#[derive(Debug, Clone)]
-enum CalcNum {
-    Number(f64),
-    Complex(Complex<f64>),
-}
-impl FromStr for CalcNum {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse::<f64>() {
-            Ok(val) => Ok(CalcNum::Number(val)),
-            Err(_) => match s.parse::<Complex<f64>>() {
-                Ok(val) => Ok(CalcNum::Complex(val)),
-                Err(_) => Err("Parse Error".to_string()),
-            },
-        }
-    }
-}
-impl Add for CalcNum {
-    type Output = Self;
-    fn add(self, other: Self) -> Self {
-        match (self, other) {
-            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a + b),
-            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a + b),
-            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) + b),
-            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a + Complex::new(b, 0.0)),
-        }
-    }
-}
-impl Sub for CalcNum {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self {
-        match (self, other) {
-            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a - b),
-            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a - b),
-            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) - b),
-            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a - Complex::new(b, 0.0)),
-        }
-    }
-}
-impl Mul for CalcNum {
-    type Output = Self;
-    fn mul(self, other: Self) -> Self {
-        match (self, other) {
-            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a * b),
-            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a * b),
-            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) * b),
-            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a * Complex::new(b, 0.0)),
-        }
-    }
-}
-
-impl Div for CalcNum {
-    type Output = Self;
-    fn div(self, other: Self) -> Self {
-        match (self, other) {
-            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a / b),
-            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a / b),
-            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) / b),
-            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a / Complex::new(b, 0.0)),
-        }
-    }
-}
-impl Rem for CalcNum {
-    type Output = Self;
-    fn rem(self, other: Self) -> Self {
-        match (self, other) {
-            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a % b),
-            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a % b),
-            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) % b),
-            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a % Complex::new(b, 0.0)),
-        }
-    }
-}
-impl CalcNum {
-    fn num_format(&self, n_place: usize) -> String {
-        match self {
-            CalcNum::Number(val) => match self.is_integer() {
-                true => format!("{:.0}", val),
-                false => format!("{:.1$}", val, n_place),
-            },
-            CalcNum::Complex(val) => {
-                format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
-            }
-        }
-    }
-    fn is_realnumber(&self) -> bool {
-        matches!(self, CalcNum::Number(_))
-    }
-
-    fn is_integer(&self) -> bool {
-        match self {
-            CalcNum::Number(val) => val.fract() == 0.0,
-            _ => false,
-        }
-    }
-
-    fn get_realnumber(&self) -> Result<f64, String> {
-        match self {
-            CalcNum::Number(val) => Ok(*val),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-    fn pow(&self, n: &Self) -> Result<CalcNum, String> {
-        // if !n.is_realnumber() {
-        //     return Err("Exponent must be real number".to_string());
-        // };
-        // let n = n.get_realnumber()?;
-        match (self, n) {
-            (CalcNum::Number(val), CalcNum::Number(n)) => Ok(CalcNum::Number(val.powf(*n))),
-            (CalcNum::Complex(val), CalcNum::Number(n)) => Ok(CalcNum::Complex(val.powf(*n))),
-            (CalcNum::Number(val), CalcNum::Complex(n)) => {
-                Ok(CalcNum::Complex(Complex::new(*val, 0.0).powc(*n)))
-            }
-            (CalcNum::Complex(val), CalcNum::Complex(n)) => Ok(CalcNum::Complex(val.powc(*n))),
-        }
-    }
-    fn log10(&self) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(val.log10()),
-            CalcNum::Complex(val) => CalcNum::Complex(val.log10()),
-        }
-    }
-    fn ln(&self) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(val.ln()),
-            CalcNum::Complex(val) => CalcNum::Complex(val.ln()),
-        }
-    }
-
-    fn sqrt(&self) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => {
-                if *val < 0.0 {
-                    CalcNum::Complex(Complex::new(0.0, val.abs().sqrt()))
-                } else {
-                    CalcNum::Number(val.sqrt())
-                }
-            }
-            CalcNum::Complex(val) => CalcNum::Complex(val.sqrt()),
-        }
-    }
-
-    fn sin(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.to_radians().sin(),
-                DegMode::Rad => val.sin(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.sin()),
-        }
-    }
-    fn cos(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.to_radians().cos(),
-                DegMode::Rad => val.cos(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.cos()),
-        }
-    }
-    fn tan(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.to_radians().tan(),
-                DegMode::Rad => val.tan(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.tan()),
-        }
-    }
-    fn asin(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.asin().to_degrees(),
-                DegMode::Rad => val.asin(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.asin()),
-        }
-    }
-    fn acos(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.acos().to_degrees(),
-                DegMode::Rad => val.acos(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.acos()),
-        }
-    }
-    fn atan(&self, degmode: &DegMode) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(match degmode {
-                DegMode::Deg => val.atan().to_degrees(),
-                DegMode::Rad => val.atan(),
-            }),
-            CalcNum::Complex(val) => CalcNum::Complex(val.atan()),
-        }
-    }
-    fn to_deg(&self) -> Result<CalcNum, String> {
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_degrees())),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-
-    fn to_rad(&self) -> Result<CalcNum, String> {
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_radians())),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-
-    fn factorial(&self) -> Result<CalcNum, String> {
-        // 階乗計算
-        if !self.is_integer() {
-            return Err("Factorial is only supported for integer".to_string());
-        }
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number((1..=*val as u64).product::<u64>() as f64)),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-
-    fn permutation(&self, n: &Self) -> Result<CalcNum, String> {
-        // 順列計算
-        if !self.is_integer() || !n.is_integer() {
-            return Err("Permutation is only supported for integer".to_string());
-        }
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(
-                (1..=*val as u64)
-                    .rev()
-                    .take(n.get_realnumber()? as usize)
-                    .product::<u64>() as f64,
-            )),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-
-    fn combination(&self, n: &Self) -> Result<CalcNum, String> {
-        // 組み合わせ計算
-        if !self.is_integer() || !n.is_integer() {
-            return Err("Combination is only supported for integer".to_string());
-        }
-        match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(
-                (1..=*val as u64)
-                    .rev()
-                    .take(n.get_realnumber()? as usize)
-                    .product::<u64>() as f64
-                    / (1..=n.get_realnumber()? as u64).product::<u64>() as f64,
-            )),
-            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
-        }
-    }
-
-    fn abs(&self) -> CalcNum {
-        match self {
-            CalcNum::Number(val) => CalcNum::Number(val.abs()),
-            CalcNum::Complex(val) => CalcNum::Number(val.norm()),
-        }
-    }
-}
-
-// const RESULT_DISPLAY_LENGTH: u16 = 12;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut stack: VecDeque<CalcNum> = VecDeque::new();
     let mut memo_map: BTreeMap<String, CalcNum> = BTreeMap::new();
     let mut degmode = DegMode::Deg;
     let mut memo_mode: Option<Memorize> = None;
-    let mut input = String::new();
-    let mut readline = DefaultEditor::new()?;
-    readline.set_max_history_size(20)?;
-    let mut input_log: VecDeque<String> = VecDeque::new();
     let mut result = String::new();
     let mut memory = String::new();
     let mut message = String::new();
     let mut decimal_point: usize = 3;
-    let mut last_result = (stack.clone(), result.clone());
-    // let mut hist_index: usize = 0;
+    let mut last_stackresult = (stack.clone(), result.clone());
     let sepalator = if cfg!(target_os = "windows") {
         "\r\n"
     } else {
         "\n"
     };
 
+    let mut input = String::new();
+    let mut readline = DefaultEditor::new()?;
+    let mut input_log: VecDeque<String> = VecDeque::new();
+    readline.set_max_history_size(20)?;
+
     loop {
         let result_len = calcrpn::STACK_SIZE.min(stack.len()) + 2;
-        input.clear();
+        if last_stackresult.0.len() > stack.len() + 1 {
+            terminal.clear()?;
+        };
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -358,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             f.render_widget(result_text, chunks[3]);
 
             // 入力
-            let input_block = Block::default().title("Input ").borders(Borders::NONE);
+            let input_block = Block::default().title("Input").borders(Borders::TOP);
             let input_text = Paragraph::new(input.as_ref()).block(input_block);
             f.render_widget(input_text, chunks[4]);
             // 余白
@@ -377,73 +113,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             crossterm::cursor::MoveTo(cursor_col, input_row),
             crossterm::cursor::Show
         )?;
+
         input = readline.readline(" >> ")?;
-        // readline.clear_screen()?;
         input_log.push_back(input.clone());
-        if &input == "undo" {
-            // undoの処理
-            stack = last_result.0.clone();
-            result = last_result.1.clone();
-            // input.clear();
-            message = "Undo".to_string();
-            continue;
-        } else if input.trim() == "clear" || &input == "c" {
-            // clearの処理
-            stack.clear();
-            result.clear();
-            // input.clear();
-            message = "Clear".to_string();
-            continue;
-        } else if input.trim() == "mc" || input.trim() == "mclear" {
-            memo_map.clear();
-            // input.clear();
-            message = "Memory clear".to_string();
-            continue;
-        } else if input.trim() == "quit" || &input == "q" {
-            break;
-        } else {
-            let app_command = input.split_whitespace().collect::<Vec<&str>>();
-            if app_command.len() == 2 {
-                if app_command[0] == "fix" {
-                    // fixの処理
-                    let fix = app_command[1].parse::<usize>().unwrap_or(3);
-                    decimal_point = fix;
-                    input.clear();
-                } else if app_command[0] == "clv" {
-                    memo_map.remove_entry(app_command[1]);
-                    update_log(&mut input_log, &mut message);
-                    update_memo(&memo_map, &mut memory);
-                    input.clear();
-                }
+
+        match input.trim() {
+            "undo" => {
+                // undoの処理
+                stack = last_stackresult.0.clone();
+                result = last_stackresult.1.clone();
+                message = "Undo".to_string();
+                continue;
             }
-
-            let temp_stack = stack.clone();
-            let temp_result = result.clone();
-
-            match manage_stack(
-                &input,
-                &mut stack,
-                &mut degmode,
-                &mut memo_map,
-                &mut memo_mode,
-            ) {
-                Ok(()) => {
-                    result.clear();
-                    memory.clear();
-                    // 入力を履歴に追加
-                    readline.add_history_entry(input.clone())?;
-                    // スタックを更新
-                    update_stack(&stack, &mut result, decimal_point);
-                    update_memo(&memo_map, &mut memory);
-                    // undo用スタックに保持
-                    last_result = (temp_stack, temp_result);
-                    update_log(&mut input_log, &mut message);
-                    // input.clear();
+            "quit" | "q" => {
+                break;
+            }
+            _ => {
+                let app_command = input.split_whitespace().collect::<Vec<&str>>();
+                if app_command.len() == 2 {
+                    match app_command[0] {
+                        "fix" => {
+                            // fixの処理
+                            let fix = app_command[1].parse::<usize>().unwrap_or(3);
+                            decimal_point = fix;
+                        }
+                        "clv" => {
+                            memo_map.remove_entry(app_command[1]);
+                            update_log(&mut input_log, &mut message);
+                            update_memo(&memo_map, &mut memory);
+                        }
+                        _ => (),
+                    }
                 }
-                Err(e) => {
-                    message = format!("Error: {}", e);
-                    input_log.pop_back();
-                    // input.clear();
+
+                let temp_stack = stack.clone();
+                let temp_result = result.clone();
+
+                match manage_stack(
+                    &input,
+                    &mut stack,
+                    &mut degmode,
+                    &mut memo_map,
+                    &mut memo_mode,
+                ) {
+                    Ok(()) => {
+                        result.clear();
+                        memory.clear();
+                        // 入力を履歴に追加
+                        readline.add_history_entry(input.clone())?;
+                        // スタックを更新
+                        update_stack(&stack, &mut result, decimal_point);
+                        update_memo(&memo_map, &mut memory);
+                        // undo用スタックに保持
+                        last_stackresult = (temp_stack, temp_result);
+                        update_log(&mut input_log, &mut message);
+                    }
+                    Err(e) => {
+                        message = format!("Error: {}", e);
+                        input_log.pop_back();
+                    }
                 }
             }
         }

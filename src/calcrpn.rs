@@ -1,8 +1,9 @@
-use crate::CalcNum;
 use core::f64;
+use num::complex::Complex;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
-
+use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::str::FromStr;
 // 演算時要素の列挙型
 #[derive(Debug)]
 pub enum Expr {
@@ -77,6 +78,264 @@ pub enum OperateStack {
 pub enum DegMode {
     Rad,
     Deg,
+}
+
+#[derive(Debug, Clone)]
+pub enum CalcNum {
+    Number(f64),
+    Complex(Complex<f64>),
+}
+impl FromStr for CalcNum {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<f64>() {
+            Ok(val) => Ok(CalcNum::Number(val)),
+            Err(_) => match s.parse::<Complex<f64>>() {
+                Ok(val) => Ok(CalcNum::Complex(val)),
+                Err(_) => Err("Parse Error".to_string()),
+            },
+        }
+    }
+}
+impl Add for CalcNum {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a + b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a + b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) + b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a + Complex::new(b, 0.0)),
+        }
+    }
+}
+impl Sub for CalcNum {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        match (self, other) {
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a - b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a - b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) - b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a - Complex::new(b, 0.0)),
+        }
+    }
+}
+impl Mul for CalcNum {
+    type Output = Self;
+    fn mul(self, other: Self) -> Self {
+        match (self, other) {
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a * b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a * b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) * b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a * Complex::new(b, 0.0)),
+        }
+    }
+}
+
+impl Div for CalcNum {
+    type Output = Self;
+    fn div(self, other: Self) -> Self {
+        match (self, other) {
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a / b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a / b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) / b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a / Complex::new(b, 0.0)),
+        }
+    }
+}
+impl Rem for CalcNum {
+    type Output = Self;
+    fn rem(self, other: Self) -> Self {
+        match (self, other) {
+            (CalcNum::Number(a), CalcNum::Number(b)) => CalcNum::Number(a % b),
+            (CalcNum::Complex(a), CalcNum::Complex(b)) => CalcNum::Complex(a % b),
+            (CalcNum::Number(a), CalcNum::Complex(b)) => CalcNum::Complex(Complex::new(a, 0.0) % b),
+            (CalcNum::Complex(a), CalcNum::Number(b)) => CalcNum::Complex(a % Complex::new(b, 0.0)),
+        }
+    }
+}
+impl CalcNum {
+    pub fn num_format(&self, n_place: usize) -> String {
+        match self {
+            CalcNum::Number(val) => match self.is_integer() {
+                true => format!("{:.0}", val),
+                false => format!("{:.1$}", val, n_place),
+            },
+            CalcNum::Complex(val) => {
+                format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
+            }
+        }
+    }
+    fn is_realnumber(&self) -> bool {
+        matches!(self, CalcNum::Number(_))
+    }
+
+    fn is_integer(&self) -> bool {
+        match self {
+            CalcNum::Number(val) => val.fract() == 0.0,
+            _ => false,
+        }
+    }
+
+    fn get_realnumber(&self) -> Result<f64, String> {
+        match self {
+            CalcNum::Number(val) => Ok(*val),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+    fn pow(&self, n: &Self) -> Result<CalcNum, String> {
+        match (self, n) {
+            (CalcNum::Number(val), CalcNum::Number(n)) => Ok(CalcNum::Number(val.powf(*n))),
+            (CalcNum::Complex(val), CalcNum::Number(n)) => Ok(CalcNum::Complex(val.powf(*n))),
+            (CalcNum::Number(val), CalcNum::Complex(n)) => {
+                Ok(CalcNum::Complex(Complex::new(*val, 0.0).powc(*n)))
+            }
+            (CalcNum::Complex(val), CalcNum::Complex(n)) => Ok(CalcNum::Complex(val.powc(*n))),
+        }
+    }
+    fn log10(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(val.log10()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.log10()),
+        }
+    }
+    fn ln(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(val.ln()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.ln()),
+        }
+    }
+
+    fn sqrt(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => {
+                if *val < 0.0 {
+                    CalcNum::Complex(Complex::new(0.0, val.abs().sqrt()))
+                } else {
+                    CalcNum::Number(val.sqrt())
+                }
+            }
+            CalcNum::Complex(val) => CalcNum::Complex(val.sqrt()),
+        }
+    }
+
+    fn sin(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.to_radians().sin(),
+                DegMode::Rad => val.sin(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.sin()),
+        }
+    }
+    fn cos(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.to_radians().cos(),
+                DegMode::Rad => val.cos(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.cos()),
+        }
+    }
+    fn tan(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.to_radians().tan(),
+                DegMode::Rad => val.tan(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.tan()),
+        }
+    }
+    fn asin(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.asin().to_degrees(),
+                DegMode::Rad => val.asin(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.asin()),
+        }
+    }
+    fn acos(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.acos().to_degrees(),
+                DegMode::Rad => val.acos(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.acos()),
+        }
+    }
+    fn atan(&self, degmode: &DegMode) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(match degmode {
+                DegMode::Deg => val.atan().to_degrees(),
+                DegMode::Rad => val.atan(),
+            }),
+            CalcNum::Complex(val) => CalcNum::Complex(val.atan()),
+        }
+    }
+    fn to_deg(&self) -> Result<CalcNum, String> {
+        match self {
+            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_degrees())),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+
+    fn to_rad(&self) -> Result<CalcNum, String> {
+        match self {
+            CalcNum::Number(val) => Ok(CalcNum::Number(val.to_radians())),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+
+    fn factorial(&self) -> Result<CalcNum, String> {
+        // 階乗計算
+        if !self.is_integer() {
+            return Err("Factorial is only supported for integer".to_string());
+        }
+        match self {
+            CalcNum::Number(val) => Ok(CalcNum::Number((1..=*val as u64).product::<u64>() as f64)),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+
+    fn permutation(&self, n: &Self) -> Result<CalcNum, String> {
+        // 順列計算
+        if !self.is_integer() || !n.is_integer() {
+            return Err("Permutation is only supported for integer".to_string());
+        }
+        match self {
+            CalcNum::Number(val) => Ok(CalcNum::Number(
+                (1..=*val as u64)
+                    .rev()
+                    .take(n.get_realnumber()? as usize)
+                    .product::<u64>() as f64,
+            )),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+
+    fn combination(&self, n: &Self) -> Result<CalcNum, String> {
+        // 組み合わせ計算
+        if !self.is_integer() || !n.is_integer() {
+            return Err("Combination is only supported for integer".to_string());
+        }
+        match self {
+            CalcNum::Number(val) => Ok(CalcNum::Number(
+                (1..=*val as u64)
+                    .rev()
+                    .take(n.get_realnumber()? as usize)
+                    .product::<u64>() as f64
+                    / (1..=n.get_realnumber()? as u64).product::<u64>() as f64,
+            )),
+            CalcNum::Complex(_val) => Err("Complex number is not supported".to_string()),
+        }
+    }
+
+    fn abs(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(val.abs()),
+            CalcNum::Complex(val) => CalcNum::Number(val.norm()),
+        }
+    }
 }
 
 pub const STACK_SIZE: usize = 12;
@@ -326,7 +585,6 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
                         *memo_mode = None;
                         Ok(Expr::Memo(Memorize::Clear))
                     }
-                    // _ => Err("Invalid Data".to_string()),
                     _ => Ok(Expr::Memo(Memorize::Recall(Some(expression.to_string())))),
                 },
             },
