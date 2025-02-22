@@ -7,7 +7,7 @@ use std::str::FromStr;
 use std::vec;
 
 trait Help {
-    fn help(&self) -> String;
+    fn help(&self) -> &str;
     fn show_help() -> String;
 }
 // 演算時要素の列挙型
@@ -41,26 +41,26 @@ pub fn print_help() {
         DegMode::show_help(),
         Memorize::show_help(),
     ];
+    println!("calrpn");
     for help in allhelp {
         println!("{}", help);
     }
 }
 impl Help for BinomialFunc {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            BinomialFunc::Add => "1 2 + : 1 + 2".to_string(),
-            BinomialFunc::Subtract => "1 2 - : 1 - 2".to_string(),
-            BinomialFunc::Multiply => "1 2 * : 1 * 2".to_string(),
-            BinomialFunc::Divide => "1 2 / : 1 / 2".to_string(),
-            BinomialFunc::Mod => "1 2 % : 1 % 2".to_string(),
-            BinomialFunc::Pow => "3 2 ^ : 3 ^ 2".to_string(),
-            BinomialFunc::NCr => "10 2 ncr : 10 nCr 2".to_string(),
-            BinomialFunc::NPr => "10 2 npr : 10 nPr 2".to_string(),
+            BinomialFunc::Add => "1 2 + : 1 + 2",
+            BinomialFunc::Subtract => "1 2 - : 1 - 2",
+            BinomialFunc::Multiply => "1 2 * : 1 * 2",
+            BinomialFunc::Divide => "1 2 / : 1 / 2",
+            BinomialFunc::Mod => "1 2 % : 1 % 2",
+            BinomialFunc::Pow => "3 2 ^ : 3 ^ 2",
+            BinomialFunc::NCr => "10 2 ncr : 10 nCr 2",
+            BinomialFunc::NPr => "10 2 npr : 10 nPr 2",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![
+        [
             BinomialFunc::Add,
             BinomialFunc::Subtract,
             BinomialFunc::Multiply,
@@ -69,12 +69,9 @@ impl Help for BinomialFunc {
             BinomialFunc::Pow,
             BinomialFunc::NCr,
             BinomialFunc::NPr,
-        ];
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        ]
+        .map(|x| x.help().to_string())
+        .join("\n")
     }
 }
 
@@ -98,28 +95,27 @@ pub enum MonomialFunc {
     ToRec,
 }
 impl Help for MonomialFunc {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            MonomialFunc::Sqrt => "30 sqrt : sqrt(30)".to_string(),
-            MonomialFunc::Log => "30 log : log10(30)".to_string(),
-            MonomialFunc::Ln => "30 ln : ln(30)".to_string(),
-            MonomialFunc::Sin => "30 sin : sin(30)".to_string(),
-            MonomialFunc::Cos => "30 cos : cos(30)".to_string(),
-            MonomialFunc::Tan => "30 tan : tan(30)".to_string(),
-            MonomialFunc::ASin => "30 asin : asin(30)".to_string(),
-            MonomialFunc::ACos => "30 acos : acos(30)".to_string(),
-            MonomialFunc::ATan => "30 atan : atan(30)".to_string(),
-            MonomialFunc::ToDeg => "pi todeg : pi to degrees".to_string(),
-            MonomialFunc::ToRad => "30 torad : 30 to radians".to_string(),
-            MonomialFunc::Abs => "30 abs : abs(30)".to_string(),
-            MonomialFunc::Factorial => "10 ! : factorial(10)".to_string(),
-            MonomialFunc::ToPolar => "30+2i topolar : 30+2i to polar".to_string(),
-            MonomialFunc::ToRec => "30+45i torec : 30+45i to rectangular".to_string(),
+            MonomialFunc::Sqrt => "30 sqrt : sqrt(30)",
+            MonomialFunc::Log => "30 log : log10(30)",
+            MonomialFunc::Ln => "30 ln : ln(30)",
+            MonomialFunc::Sin => "30 sin : sin(30)",
+            MonomialFunc::Cos => "30 cos : cos(30)",
+            MonomialFunc::Tan => "30 tan : tan(30)",
+            MonomialFunc::ASin => "30 asin : asin(30)",
+            MonomialFunc::ACos => "30 acos : acos(30)",
+            MonomialFunc::ATan => "30 atan : atan(30)",
+            MonomialFunc::ToDeg => "pi todeg : pi to degrees",
+            MonomialFunc::ToRad => "30 torad : 30 to radians",
+            MonomialFunc::Abs => "30 abs : abs(30)",
+            MonomialFunc::Factorial => "10 ! : factorial(10)",
+            MonomialFunc::ToPolar => "30+2i topolar : 30+2i to polar",
+            MonomialFunc::ToRec => "30+45i torec : 30+45i to rectangular",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![
+        [
             MonomialFunc::Sqrt,
             MonomialFunc::Log,
             MonomialFunc::Ln,
@@ -135,12 +131,9 @@ impl Help for MonomialFunc {
             MonomialFunc::Factorial,
             MonomialFunc::ToPolar,
             MonomialFunc::ToRec,
-        ];
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        ]
+        .map(|x| x.help().to_string())
+        .join("\n")
     }
 }
 // 記憶領域の列挙型
@@ -151,26 +144,21 @@ pub enum Memorize {
     Store(Option<String>),
 }
 impl Help for Memorize {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            Memorize::Recall(_) => "rcl : recall memory".to_string(),
-            Memorize::Clear => "mc : clear memory".to_string(),
-            Memorize::Store(_) => "sto : store memory".to_string(),
+            Memorize::Recall(_) => "rcl : recall memory",
+            Memorize::Clear => "mc : clear memory",
+            Memorize::Store(_) => "sto : store memory",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![
+        [
             Memorize::Recall(None),
             Memorize::Clear,
             Memorize::Store(None),
-        ];
-        println!("calcrpn help");
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        ]
+        .map(|x| x.help().to_string())
+        .join("\n")
     }
 }
 // 定数の列挙型
@@ -180,20 +168,16 @@ pub enum Constant {
     E,
 }
 impl Help for Constant {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            Constant::Pi => "pi : 3.14159265358979323846".to_string(),
-            Constant::E => "e : 2.71828182845904523536".to_string(),
+            Constant::Pi => "pi : 3.14159265358979323846",
+            Constant::E => "e : 2.71828182845904523536",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![Constant::Pi, Constant::E];
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        [Constant::Pi, Constant::E]
+            .map(|x| x.help().to_string())
+            .join("\n")
     }
 }
 
@@ -210,21 +194,20 @@ pub enum OperateStack {
     Rad,
 }
 impl Help for OperateStack {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            OperateStack::Swap => "sw : swap top two stack".to_string(),
-            OperateStack::Clear => "cl : clear stack".to_string(),
-            OperateStack::Delete => "dl : delete top stack".to_string(),
-            OperateStack::RollUp => "rup : roll up stack".to_string(),
-            OperateStack::RollDown => "rdn : roll down stack".to_string(),
-            OperateStack::Sum => "sum : sum all stack".to_string(),
-            OperateStack::Deg => "deg : set degree mode".to_string(),
-            OperateStack::Rad => "rad : set radian mode".to_string(),
+            OperateStack::Swap => "sw : swap top two stack",
+            OperateStack::Clear => "cl : clear stack",
+            OperateStack::Delete => "dl : delete top stack",
+            OperateStack::RollUp => "rup : roll up stack",
+            OperateStack::RollDown => "rdn : roll down stack",
+            OperateStack::Sum => "sum : sum all stack",
+            OperateStack::Deg => "deg : set degree mode",
+            OperateStack::Rad => "rad : set radian mode",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![
+        [
             OperateStack::Swap,
             OperateStack::Clear,
             OperateStack::Delete,
@@ -233,12 +216,9 @@ impl Help for OperateStack {
             OperateStack::Sum,
             OperateStack::Deg,
             OperateStack::Rad,
-        ];
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        ]
+        .map(|x| x.help().to_string())
+        .join("\n")
     }
 }
 // 角度モードの列挙型
@@ -248,20 +228,16 @@ pub enum DegMode {
     Deg,
 }
 impl Help for DegMode {
-    fn help(&self) -> String {
+    fn help(&self) -> &str {
         match self {
-            DegMode::Rad => "Rad : Radian Mode".to_string(),
-            DegMode::Deg => "Deg : Degree Mode".to_string(),
+            DegMode::Rad => "Rad : Radian Mode",
+            DegMode::Deg => "Deg : Degree Mode",
         }
     }
     fn show_help() -> String {
-        let mut help_str = String::new();
-        let self_all = vec![DegMode::Rad, DegMode::Deg];
-        for func in self_all {
-            help_str.push_str(&func.help());
-            help_str.push('\n');
-        }
-        help_str
+        [DegMode::Rad, DegMode::Deg]
+            .map(|x| x.help().to_string())
+            .join("\n")
     }
 }
 

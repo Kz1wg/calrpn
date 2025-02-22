@@ -195,13 +195,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             io::stdin().read_line(&mut input)?;
             match input.trim() {
                 "quit" | "q" => {
+                    terminal.clear()?;
                     break;
                 }
-                _ => {
-                    terminal.clear()?;
-                }
+                _ => {}
             }
         } else {
+            terminal.clear()?;
             break;
         }
     }
