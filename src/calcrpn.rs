@@ -108,7 +108,7 @@ impl Help for MonomialFunc {
             MonomialFunc::ATan => "30 atan : atan(30)",
             MonomialFunc::ToDeg => "pi todeg : pi to degrees",
             MonomialFunc::ToRad => "30 torad : 30 to radians",
-            MonomialFunc::Abs => "30 abs : abs(30)",
+            MonomialFunc::Abs => "10+30i abs : abs(10+30i)",
             MonomialFunc::Factorial => "10 ! : factorial(10)",
             MonomialFunc::ToPolar => "30+2i topolar : 30+2i to polar",
             MonomialFunc::ToRec => "30+45i torec : 30+45i to rectangular",
@@ -485,7 +485,10 @@ impl CalcNum {
             return Err("Factorial is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number((1..=*val as u64).product::<u64>() as f64)),
+            CalcNum::Number(val) => {
+                let result = safe_product(1..=*val as u64)? as f64;
+                Ok(CalcNum::Number(result))
+            }
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
@@ -496,12 +499,12 @@ impl CalcNum {
             return Err("Permutation is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(
-                (1..=*val as u64)
-                    .rev()
-                    .take(n.get_realnumber()? as usize)
-                    .product::<u64>() as f64,
-            )),
+            CalcNum::Number(val) => {
+                let result =
+                    safe_product((1..=*val as u64).rev().take(n.get_realnumber()? as usize))?
+                        as f64;
+                Ok(CalcNum::Number(result))
+            }
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
@@ -512,13 +515,13 @@ impl CalcNum {
             return Err("Combination is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => Ok(CalcNum::Number(
-                (1..=*val as u64)
-                    .rev()
-                    .take(n.get_realnumber()? as usize)
-                    .product::<u64>() as f64
-                    / (1..=n.get_realnumber()? as u64).product::<u64>() as f64,
-            )),
+            CalcNum::Number(val) => {
+                let result1 =
+                    safe_product((1..=*val as u64).rev().take(n.get_realnumber()? as usize))?
+                        as f64;
+                let result2 = safe_product(1..=n.get_realnumber()? as u64)? as f64;
+                Ok(CalcNum::Number(result1 / result2))
+            }
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
@@ -845,6 +848,11 @@ fn get_one_item(calstack: &mut VecDeque<CalcNum>) -> Result<CalcNum, String> {
             None => Err("Stack is Empty".to_string()),
         }
     }
+}
+
+fn safe_product(iter: impl IntoIterator<Item = u64>) -> Result<u64, &'static str> {
+    iter.into_iter()
+        .try_fold(1u64, |acc, x| acc.checked_mul(x).ok_or("over flow"))
 }
 
 #[cfg(test)]

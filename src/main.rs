@@ -232,10 +232,18 @@ fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: u
     } else {
         "\n"
     };
-    for (i, sval) in stack.iter().enumerate().rev().take(10).rev() {
-        result.push_str(sval.num_format(decimal_point).as_ref());
-        if i < stack.len().max(1) - 1 {
-            result.push_str(sepalator);
-        }
-    }
+    *result = stack
+        .iter()
+        .rev()
+        .take(10)
+        .rev()
+        .map(|x| x.num_format(decimal_point))
+        .collect::<Vec<_>>()
+        .join(sepalator);
+    // for (i, sval) in stack.iter().enumerate().rev().take(10).rev() {
+    //     result.push_str(sval.num_format(decimal_point).as_ref());
+    //     if i < stack.len().max(1) - 1 {
+    //         result.push_str(sepalator);
+    //     }
+    // }
 }
