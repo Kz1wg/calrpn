@@ -49,14 +49,14 @@ pub fn print_help() {
 impl Help for BinomialFunc {
     fn help(&self) -> &str {
         match self {
-            BinomialFunc::Add => "1 2 + : 1 + 2",
-            BinomialFunc::Subtract => "1 2 - : 1 - 2",
-            BinomialFunc::Multiply => "1 2 * : 1 * 2",
-            BinomialFunc::Divide => "1 2 / : 1 / 2",
-            BinomialFunc::Mod => "1 2 % : 1 % 2",
-            BinomialFunc::Pow => "3 2 ^ : 3 ^ 2",
-            BinomialFunc::NCr => "10 2 ncr : 10 nCr 2",
-            BinomialFunc::NPr => "10 2 npr : 10 nPr 2",
+            BinomialFunc::Add => "1 2 + -> 1 + 2",
+            BinomialFunc::Subtract => "1 2 - -> 1 - 2",
+            BinomialFunc::Multiply => "1 2 * -> 1 * 2",
+            BinomialFunc::Divide => "1 2 / -> 1 / 2",
+            BinomialFunc::Mod => "1 2 % -> 1 % 2",
+            BinomialFunc::Pow => "3 2 ^ -> 3 ^ 2",
+            BinomialFunc::NCr => "ncr: 10 2 ncr -> 10 nCr 2",
+            BinomialFunc::NPr => "npr: 10 2 npr -> 10 nPr 2",
         }
     }
     fn show_help() -> String {
@@ -97,21 +97,21 @@ pub enum MonomialFunc {
 impl Help for MonomialFunc {
     fn help(&self) -> &str {
         match self {
-            MonomialFunc::Sqrt => "30 sqrt : sqrt(30)",
-            MonomialFunc::Log => "30 log : log10(30)",
-            MonomialFunc::Ln => "30 ln : ln(30)",
-            MonomialFunc::Sin => "30 sin : sin(30)",
-            MonomialFunc::Cos => "30 cos : cos(30)",
-            MonomialFunc::Tan => "30 tan : tan(30)",
-            MonomialFunc::ASin => "30 asin : asin(30)",
-            MonomialFunc::ACos => "30 acos : acos(30)",
-            MonomialFunc::ATan => "30 atan : atan(30)",
-            MonomialFunc::ToDeg => "pi todeg : pi to degrees",
-            MonomialFunc::ToRad => "30 torad : 30 to radians",
-            MonomialFunc::Abs => "10+30i abs : abs(10+30i)",
-            MonomialFunc::Factorial => "10 ! : factorial(10)",
-            MonomialFunc::ToPolar => "30+2i topolar : 30+2i to polar",
-            MonomialFunc::ToRec => "30+45i torec : 30+45i to rectangular",
+            MonomialFunc::Sqrt => "sqrt: 30 sqrt -> sqrt(30)",
+            MonomialFunc::Log => "log: 30 log -> log10(30)",
+            MonomialFunc::Ln => "ln: 30 ln -> ln(30)",
+            MonomialFunc::Sin => "sin: 30 sin -> sin(30)",
+            MonomialFunc::Cos => "cos: 30 cos -> cos(30)",
+            MonomialFunc::Tan => "tan: 30 tan -> tan(30)",
+            MonomialFunc::ASin => "asin: 30 asin -> asin(30)",
+            MonomialFunc::ACos => "acos: 30 acos -> acos(30)",
+            MonomialFunc::ATan => "atan: 30 atan -> atan(30)",
+            MonomialFunc::ToDeg => "todeg: pi todeg -> pi to degrees",
+            MonomialFunc::ToRad => "torad: 30 torad -> 30 to radians",
+            MonomialFunc::Abs => "abs: 10+30i abs -> abs(10+30i)",
+            MonomialFunc::Factorial => "n! or ! : 10 ! -> factorial(10)",
+            MonomialFunc::ToPolar => "topolar: 30+2i topolar -> 30+2i to polar",
+            MonomialFunc::ToRec => "torec: 30+45i torec -> 30+45i to rectangular",
         }
     }
     fn show_help() -> String {
