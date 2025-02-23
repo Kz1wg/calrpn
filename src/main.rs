@@ -198,7 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     terminal.clear()?;
                     break;
                 }
-                _ => {}
+                _ => terminal.clear()?,
             }
         } else {
             terminal.clear()?;
