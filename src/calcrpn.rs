@@ -485,44 +485,41 @@ impl CalcNum {
             return Err("Factorial is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => {
-                let result = safe_product(1..=*val as u64)? as f64;
+            CalcNum::Number(n) => {
+                let result = safe_product(1..=*n as u64)? as f64;
                 Ok(CalcNum::Number(result))
             }
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
 
-    fn permutation(&self, n: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn permutation(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
         // 順列計算
-        if !self.is_integer() || !n.is_integer() {
+        if !self.is_integer() || !r.is_integer() {
             return Err("Permutation is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => {
-                let result =
-                    safe_product((1..=*val as u64).rev().take(n.get_realnumber()? as usize))?
-                        as f64;
+            CalcNum::Number(n) => {
+                let start = n - r.get_realnumber()? + 1.0;
+                let result = safe_product(start as u64..=*n as u64)? as f64;
                 Ok(CalcNum::Number(result))
             }
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
 
-    fn combination(&self, n: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn combination(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
         // 組み合わせ計算
-        if !self.is_integer() || !n.is_integer() {
+        if !self.is_integer() || !r.is_integer() {
             return Err("Combination is only supported for integer".into());
         }
         match self {
-            CalcNum::Number(val) => {
-                let result1 =
-                    safe_product((1..=*val as u64).rev().take(n.get_realnumber()? as usize))?
-                        as f64;
-                let result2 = safe_product(1..=n.get_realnumber()? as u64)? as f64;
+            CalcNum::Number(_n) => {
+                let result1 = self.permutation(r)?.get_realnumber()?;
+                let result2 = safe_product(1..=r.get_realnumber()? as u64)? as f64;
                 Ok(CalcNum::Number(result1 / result2))
             }
-            CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
+            CalcNum::Complex(_n) => Err("Complex number is not supported".into()),
         }
     }
 
