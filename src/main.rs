@@ -1,17 +1,10 @@
 mod calcrpn;
 use calcrpn::{manage_stack, CalcNum, DegMode, Memorize};
-use tui::{
-    backend::CrosstermBackend,
+use crossterm::execute;
+use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Paragraph},
-    Terminal,
 };
-
-use crossterm::{
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-
 use rustyline::{config::Configurer, DefaultEditor};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -19,12 +12,13 @@ use std::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    let mut terminal = ratatui::init();
+    let result = run(&mut terminal);
+    ratatui::restore();
+    result
+}
 
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error::Error>> {
     let mut stack: VecDeque<CalcNum> = VecDeque::new();
     let mut memo_map: BTreeMap<String, CalcNum> = BTreeMap::new();
     let mut degmode = DegMode::Deg;
@@ -34,19 +28,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut message = String::new();
     let mut decimal_point: usize = 3;
     let mut last_stackresult = (stack.clone(), result.clone());
+
     let sepalator = if cfg!(target_os = "windows") {
         "\r\n"
     } else {
         "\n"
     };
 
-    let mut is_help = true;
+    let mut do_continue = true;
     let mut input = String::new();
     let mut readline = DefaultEditor::new()?;
     let mut input_log: VecDeque<String> = VecDeque::new();
     readline.set_max_history_size(20)?;
 
-    while is_help {
+    while do_continue {
         loop {
             let result_len = calcrpn::STACK_SIZE.min(stack.len()) + 2;
             if last_stackresult.0.len() > stack.len() + 1 {
@@ -67,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ]
                         .as_ref(),
                     )
-                    .split(f.size());
+                    .split(f.area());
                 // ステータスバー
                 let status_block = Block::default().borders(Borders::NONE);
                 let status_text = Paragraph::new(format!(
@@ -79,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 //Memory
                 let memory_block = Block::default().borders(Borders::NONE);
-                let memory_text = Paragraph::new(memory.as_ref()).block(memory_block);
+                let memory_text = Paragraph::new(memory.clone()).block(memory_block);
                 f.render_widget(memory_text, chunks[1]);
                 // Helper メッセージ
                 let help_block = Block::default().title("Message").borders(Borders::ALL);
@@ -92,12 +87,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 //結果表示
                 let result_block = Block::default().title("Result Stack").borders(Borders::ALL);
-                let result_text = Paragraph::new(result.as_ref()).block(result_block);
+                let result_text = Paragraph::new(result.clone()).block(result_block);
                 f.render_widget(result_text, chunks[3]);
 
                 // 入力
                 let input_block = Block::default().title("Input").borders(Borders::TOP);
-                let input_text = Paragraph::new(input.as_ref()).block(input_block);
+                let input_text = Paragraph::new(input.clone()).block(input_block);
                 f.render_widget(input_text, chunks[4]);
                 // 余白
                 let status_block = Block::default().borders(Borders::TOP);
@@ -131,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 "quit" | "q" => {
-                    is_help = false;
+                    do_continue = false;
                     break;
                 }
                 _ => {
@@ -166,10 +161,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(()) => {
                             // 入力を履歴に追加
                             readline.add_history_entry(input.clone())?;
-                            // // スタックを更新
-                            // update_stack(&stack, &mut result, decimal_point);
-                            // update_memo(&memo_map, &mut memory);
-                            // undo用スタックに保持
                             last_stackresult = (temp_stack, temp_result);
                             update_log(&mut input_log, &mut message);
                         }
@@ -186,10 +177,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
-        disable_raw_mode()?;
-        terminal.show_cursor()?;
-        if is_help {
+        if do_continue {
+            ratatui::restore();
             calcrpn::print_help();
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
@@ -200,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => terminal.clear()?,
             }
+            *terminal = ratatui::init();
         } else {
             terminal.clear()?;
             break;
@@ -240,10 +230,4 @@ fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: u
         .map(|x| x.num_format(decimal_point))
         .collect::<Vec<_>>()
         .join(sepalator);
-    // for (i, sval) in stack.iter().enumerate().rev().take(10).rev() {
-    //     result.push_str(sval.num_format(decimal_point).as_ref());
-    //     if i < stack.len().max(1) - 1 {
-    //         result.push_str(sepalator);
-    //     }
-    // }
 }

@@ -270,6 +270,7 @@ impl Add for CalcNum {
         }
     }
 }
+
 impl Sub for CalcNum {
     type Output = Self;
     fn sub(self, other: Self) -> Self {
