@@ -28,18 +28,17 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     let mut message = String::new();
     let mut decimal_point: usize = 3;
     let mut last_stackresult = (stack.clone(), result.clone());
+    let mut do_continue = true;
+    let mut input = String::new();
+    let mut readline = DefaultEditor::new()?;
+    let mut input_log: VecDeque<String> = VecDeque::new();
+    readline.set_max_history_size(20)?;
 
     let sepalator = if cfg!(target_os = "windows") {
         "\r\n"
     } else {
         "\n"
     };
-
-    let mut do_continue = true;
-    let mut input = String::new();
-    let mut readline = DefaultEditor::new()?;
-    let mut input_log: VecDeque<String> = VecDeque::new();
-    readline.set_max_history_size(20)?;
 
     while do_continue {
         loop {
@@ -160,7 +159,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                     ) {
                         Ok(()) => {
                             // 入力を履歴に追加
-                            readline.add_history_entry(input.clone())?;
+                            readline.add_history_entry(&input)?;
                             last_stackresult = (temp_stack, temp_result);
                             update_log(&mut input_log, &mut message);
                         }
