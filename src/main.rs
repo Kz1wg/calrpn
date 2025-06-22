@@ -1,11 +1,12 @@
 mod calcrpn;
-use calcrpn::{manage_stack, CalcNum, DegMode, Memorize};
+// mod finance;
+use calcrpn::{CalcNum, DegMode, Memorize, manage_stack};
 use crossterm::execute;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Paragraph},
 };
-use rustyline::{config::Configurer, DefaultEditor};
+use rustyline::{DefaultEditor, config::Configurer};
 use std::{
     collections::{BTreeMap, VecDeque},
     io,
@@ -32,6 +33,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     let mut input = String::new();
     let mut readline = DefaultEditor::new()?;
     let mut input_log: VecDeque<String> = VecDeque::new();
+
     readline.set_max_history_size(20)?;
 
     let sepalator = if cfg!(target_os = "windows") {
@@ -69,11 +71,13 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                     decimal_point, degmode, memo_mode
                 ))
                 .block(status_block);
+
                 f.render_widget(status_text, chunks[0]);
 
                 //Memory
                 let memory_block = Block::default().borders(Borders::NONE);
                 let memory_text = Paragraph::new(memory.clone()).block(memory_block);
+
                 f.render_widget(memory_text, chunks[1]);
                 // Helper メッセージ
                 let help_block = Block::default().title("Message").borders(Borders::ALL);
@@ -82,6 +86,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                     sepalator, message
                 ))
                 .block(help_block);
+
                 f.render_widget(help_text, chunks[2]);
 
                 //結果表示
@@ -160,8 +165,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                         Ok(()) => {
                             // 入力を履歴に追加
                             readline.add_history_entry(&input)?;
-                            last_stackresult = (temp_stack, temp_result);
-                            update_log(&mut input_log, &mut message);
                         }
                         Err(e) => {
                             message = format!("Error: {}", e);

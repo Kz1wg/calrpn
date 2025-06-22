@@ -253,12 +253,13 @@ impl FromStr for CalcNum {
             Ok(val) => Ok(CalcNum::Number(val)),
             Err(_) => match s.parse::<Complex<f64>>() {
                 Ok(val) => Ok(CalcNum::Complex(val)),
-                Err(_) => Err("Parse Error".to_string()),
+                Err(e) => Err(e.to_string()),
             },
         }
     }
 }
 
+// 演算子のオーバーライド
 impl Add for CalcNum {
     type Output = Self;
     fn add(self, other: Self) -> Self {
@@ -316,6 +317,7 @@ impl Rem for CalcNum {
         }
     }
 }
+
 impl CalcNum {
     pub fn num_format(&self, n_place: usize) -> String {
         match self {
@@ -563,8 +565,9 @@ pub fn manage_stack(
         .split_whitespace()
         .flat_map(separate_exp)
         .map(|arg: String| parse_exp(&arg, memo_mode))
-        .collect::<Result<Vec<Expr>, String>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
 
+    // 各機能を担うクロージャ群
     // 記憶関連の処理
     let mut manage_memorize = |memo: Memorize, calstack: &mut VecDeque<CalcNum>| {
         match memo {
@@ -738,6 +741,7 @@ pub fn manage_stack(
         };
         calstack.push_back(CalcNum::Number(result));
     };
+    // 各機能を担うクロージャ群 終わり
 
     // 式の要素を順番に処理
     for item in items {
@@ -856,7 +860,7 @@ fn safe_product(iter: impl IntoIterator<Item = u64>) -> Result<u64, &'static str
 #[cfg(test)]
 mod tests {
 
-    use crate::{manage_stack, CalcNum, DegMode};
+    use crate::{CalcNum, DegMode, manage_stack};
     use core::f64;
     use std::collections::{BTreeMap, VecDeque};
 
@@ -925,7 +929,10 @@ mod tests {
         assert_eq!(realnumtest("10 3 ncr"), 120.0);
         assert_eq!(realnumtest("5 n!"), 120.0);
         complex_assert(complexnumtest("-10i log"), (1.0, -0.6821881769));
-        complex_assert(complexnumtest("-10i ln"), (2.302585093, -1.5707963268));
+        complex_assert(
+            complexnumtest("-10i ln"),
+            (std::f64::consts::LN_10, -std::f64::consts::FRAC_PI_2),
+        );
         complex_assert(complexnumtest("pi 1i*  sin"), (0.0, 11.5487393573));
         complex_assert(
             complexnumtest("pi 3 /  pi -4i / + cos"),
