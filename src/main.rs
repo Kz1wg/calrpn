@@ -28,7 +28,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     let mut memory = String::new();
     let mut message = String::new();
     let mut decimal_point: usize = 3;
-    let mut last_stackresult = (stack.clone(), result.clone());
+    let last_stackresult = (stack.clone(), result.clone());
     let mut do_continue = true;
     let mut input = String::new();
     let mut readline = DefaultEditor::new()?;
@@ -67,8 +67,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                 // ステータスバー
                 let status_block = Block::default().borders(Borders::NONE);
                 let status_text = Paragraph::new(format!(
-                    "Fix:{} | {:?} | MemoMode:{:?}",
-                    decimal_point, degmode, memo_mode
+                    "Fix:{decimal_point} | {degmode:?} | MemoMode:{memo_mode:?}",
                 ))
                 .block(status_block);
 
@@ -82,8 +81,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                 // Helper メッセージ
                 let help_block = Block::default().title("Message").borders(Borders::ALL);
                 let help_text = Paragraph::new(format!(
-                    "Enter: Calc | quit or q : Quit | Undo : undo{}{}",
-                    sepalator, message
+                    "Enter: Calc | quit or q : Quit | Undo : undo{sepalator}{message}",
                 ))
                 .block(help_block);
 
@@ -152,8 +150,8 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                         }
                     }
 
-                    let temp_stack = stack.clone();
-                    let temp_result = result.clone();
+                    // let temp_stack = stack.clone();
+                    // let temp_result = result.clone();
 
                     match manage_stack(
                         &input,
@@ -167,7 +165,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                             readline.add_history_entry(&input)?;
                         }
                         Err(e) => {
-                            message = format!("Error: {}", e);
+                            message = format!("Error: {e}");
                             input_log.pop_back();
                         }
                     }

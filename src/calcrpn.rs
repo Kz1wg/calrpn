@@ -43,7 +43,7 @@ pub fn print_help() {
     ];
     println!("calrpn");
     for help in allhelp {
-        println!("{}", help);
+        println!("{help}");
     }
 }
 impl Help for BinomialFunc {
@@ -322,8 +322,8 @@ impl CalcNum {
     pub fn num_format(&self, n_place: usize) -> String {
         match self {
             CalcNum::Number(val) => match self.is_integer() {
-                true => format!("{:.0}", val),
-                false => format!("{:.1$}", val, n_place),
+                true => format!("{val:.0}"),
+                false => format!("{val:.n_place$}"),
             },
             CalcNum::Complex(val) => {
                 format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
