@@ -261,6 +261,7 @@ impl FromStr for CalcNum {
 
 // 演算子のオーバーライド
 impl Add for CalcNum {
+    // 加算
     type Output = Self;
     fn add(self, other: Self) -> Self {
         match (self, other) {
@@ -273,6 +274,7 @@ impl Add for CalcNum {
 }
 
 impl Sub for CalcNum {
+    // 引き算
     type Output = Self;
     fn sub(self, other: Self) -> Self {
         match (self, other) {
@@ -284,6 +286,7 @@ impl Sub for CalcNum {
     }
 }
 impl Mul for CalcNum {
+    // 乗算
     type Output = Self;
     fn mul(self, other: Self) -> Self {
         match (self, other) {
@@ -296,6 +299,7 @@ impl Mul for CalcNum {
 }
 
 impl Div for CalcNum {
+    // 除算
     type Output = Self;
     fn div(self, other: Self) -> Self {
         match (self, other) {
@@ -307,6 +311,7 @@ impl Div for CalcNum {
     }
 }
 impl Rem for CalcNum {
+    // 余算
     type Output = Self;
     fn rem(self, other: Self) -> Self {
         match (self, other) {
@@ -332,10 +337,12 @@ impl CalcNum {
     }
 
     fn is_realnumber(&self) -> bool {
+        // 実数チェック
         matches!(self, CalcNum::Number(_))
     }
 
     fn is_integer(&self) -> bool {
+        // 整数チェック
         match self {
             CalcNum::Number(val) => val.fract() == 0.0,
             _ => false,
@@ -440,6 +447,7 @@ impl CalcNum {
     }
 
     fn to_polar(&self, degmode: &DegMode) -> Result<CalcNum, Box<dyn std::error::Error>> {
+        // 極座標変換
         match self {
             CalcNum::Number(_val) => Err("Invalid Type".into()),
             CalcNum::Complex(val) => {
@@ -567,7 +575,7 @@ pub fn manage_stack(
         .map(|arg: String| parse_exp(&arg, memo_mode))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // 各機能を担うクロージャ群
+    // --各機能を担うクロージャ群--
     // 記憶関連の処理
     let mut manage_memorize = |memo: Memorize, calstack: &mut VecDeque<CalcNum>| {
         match memo {
@@ -741,18 +749,25 @@ pub fn manage_stack(
         };
         calstack.push_back(CalcNum::Number(result));
     };
-    // 各機能を担うクロージャ群 終わり
+    // --各機能を担うクロージャ群-- 終わり
 
-    // 式の要素を順番に処理
-    for item in items {
-        // 式の要素に応じて処理を分岐
-        match item {
-            Expr::Memo(mem) => manage_memorize(mem, calstack)?,
-            Expr::Numbers(data) => calstack.push_back(data),
-            Expr::Binomial(b_func) => manage_binomial(b_func, calstack)?,
-            Expr::Monomial(m_func) => manage_monomial(m_func, calstack, degmode)?,
-            Expr::Opstack(operate) => manage_operate_stack(operate, calstack, degmode)?,
-            Expr::Const(consts) => manage_constant(consts, calstack),
+    // 空入力で最後尾のアイテムをコピー HP電卓の挙動と同様
+    if expression.is_empty() && !calstack.is_empty() {
+        let copy_item = get_one_item(calstack)?;
+        calstack.push_back(copy_item.clone());
+        calstack.push_back(copy_item);
+    } else {
+        // 式の要素を順番に処理
+        for item in items {
+            // 式の要素に応じて処理を分岐
+            match item {
+                Expr::Memo(mem) => manage_memorize(mem, calstack)?,
+                Expr::Numbers(data) => calstack.push_back(data),
+                Expr::Binomial(b_func) => manage_binomial(b_func, calstack)?,
+                Expr::Monomial(m_func) => manage_monomial(m_func, calstack, degmode)?,
+                Expr::Opstack(operate) => manage_operate_stack(operate, calstack, degmode)?,
+                Expr::Const(consts) => manage_constant(consts, calstack),
+            }
         }
     }
     // スタックが一定以上になった場合、先頭の要素を削除

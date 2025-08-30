@@ -114,7 +114,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
             )?;
 
             input = readline.readline(" >> ")?;
-            input_log.push_back(input.clone());
+            if !input.is_empty() {
+                input_log.push_back(input.clone());
+            }
 
             match input.trim() {
                 "undo" => {
@@ -131,9 +133,13 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                     do_continue = false;
                     break;
                 }
+                "clh" | "clearhist" => {
+                    input_log.clear();
+                }
                 _ => {
                     let app_command = input.split_whitespace().collect::<Vec<&str>>();
                     if app_command.len() == 2 {
+                        // 'fix 2'のように引数を取るコマンド
                         match app_command[0] {
                             "fix" => {
                                 // fixの処理
@@ -150,9 +156,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                         }
                     }
 
-                    // let temp_stack = stack.clone();
-                    // let temp_result = result.clone();
-
                     match manage_stack(
                         &input,
                         &mut stack,
@@ -163,6 +166,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                         Ok(()) => {
                             // 入力を履歴に追加
                             readline.add_history_entry(&input)?;
+                            update_log(&mut input_log, &mut message);
                         }
                         Err(e) => {
                             message = format!("Error: {e}");
@@ -205,7 +209,7 @@ fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
     *message = input_log
         .iter()
         .rev()
-        .fold("Hist: ".to_string(), |acc, x| acc + x + " ← ");
+        .fold("Hist: ".to_string(), |acc, x| acc + x + " → ");
 }
 
 fn update_memo(memo_map: &BTreeMap<String, CalcNum>, memory: &mut String) {

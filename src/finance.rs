@@ -17,7 +17,7 @@ pub fn present_value(n: f64, iyr: f64, pmt: f64, fv: f64) -> f64 {
     // 未来価値（FV, Future Value）、利率（IYR, Interest Rate per Year）
     // 各期の支払い額（PMT, Payment）、支払い回数（N, Number of Periods）
     let i_yr = iyr / 100.0 / 12.0;
-    let pv = (fv - pmt * ((1.0 + i_yr).powf(n) - 1.0) / i_yr) / ((1.0 + i_yr).powf(n));
+    let pv = fv / ((1.0 + i_yr).powf(n)) + pmt * (1.0 - (1.0 + i_yr).powf(-n)) / i_yr;
     -pv
 }
 
@@ -25,8 +25,15 @@ pub fn number_of_periods(iyr: f64, pv: f64, pmt: f64, fv: f64) -> f64 {
     // 現在価値（PV, Present Value）、利率（IYR, Interest Rate per Year）
     // 未来価値（FV, Future Value）、各期の支払い額（PMT, Payment）
     let i_yr = iyr / 100.0 / 12.0;
-    let n = ((fv * i_yr + pmt).ln() - (pv * i_yr + pmt).ln()) / (1.0 + i_yr).ln();
-    -n
+    // let n = ((fv * i_yr + pmt).ln() - (pv * i_yr + pmt).ln()) / (1.0 + i_yr).ln();
+    if pmt == 0.0 {
+        (fv / -pv).ln() / (1.0 + i_yr).ln()
+    } else if fv == 0.0 {
+        -((1.0 + (i_yr * pv) / pmt).ln() / (1.0 + i_yr).ln())
+    } else {
+        -(((pv + pmt.powf(1.0 + i_yr) / i_yr) / (fv - pmt.powf(1.0 + i_yr) / i_yr)).ln()
+            / (1.0 + i_yr).ln())
+    }
 }
 
 #[allow(dead_code)]
@@ -43,10 +50,14 @@ fn fv_loop(n: f64, iyr: f64, pv: f64, pmt: f64) -> f64 {
 
 #[test]
 fn finance_test() {
-    // println!("{}", number_of_periods(3.0, -20.0, -2.0, 0.0));
+    println!("test: {}", number_of_periods(10.0, 20.0, -1.0, -10.0));
     assert!((fv_loop(12.0, 20.0, -22.0, -1.0) - 39.99).abs() < 0.01);
     assert!((fv_loop(30.0, 10.0, 100.0, -2.0) - -60.4226).abs() < 0.01);
     assert!((future_value(12.0, 20.0, -22.0, -1.0) - 39.99).abs() < 0.01);
     assert!((payment(12.0, 20.0, -22.0, -40.0) - 1.0).abs() < 0.01);
     assert!((future_value(30.0, 10.0, 100.0, -2.0) - -60.4226).abs() < 0.01);
+    assert!((present_value(12.0, 10.0, -1.0, 22.0) - -8.54017).abs() < 0.01);
+    assert!((present_value(24.0, 10.0, -1.0, 60.0) - -27.49372).abs() < 0.01);
+    assert!((number_of_periods(10.0, 50.0, -1.0, 0.0) - 64.94871).abs() < 0.01);
+    assert!((number_of_periods(10.0, 20.0, 0.0, -25.0) - 26.88864).abs() < 0.01);
 }
