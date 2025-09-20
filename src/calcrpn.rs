@@ -704,23 +704,38 @@ pub fn manage_stack(
                 if let Some(inkey) = key {
                     match inkey.as_str() {
                         "n" => match TvmItem::n_value(memory_map) {
-                            Some(value) => calstack.push_back(CalcNum::Number(value)),
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
+                            }
                             None => return Err("n_value Error"),
                         },
                         "iyr" => match TvmItem::i_year_rate(memory_map) {
-                            Some(value) => calstack.push_back(CalcNum::Number(value)),
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
+                            }
                             None => return Err("i_year Error"),
                         },
                         "pv" => match TvmItem::present_value(memory_map) {
-                            Some(value) => calstack.push_back(CalcNum::Number(value)),
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("pv".to_string(), CalcNum::Number(value));
+                            }
                             None => return Err("pv Error"),
                         },
                         "pmt" => match TvmItem::payment(memory_map) {
-                            Some(value) => calstack.push_back(CalcNum::Number(value)),
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("pmt".to_string(), CalcNum::Number(value));
+                            }
                             None => return Err("pmt Error"),
                         },
                         "fv" => match TvmItem::future_value(memory_map) {
-                            Some(value) => calstack.push_back(CalcNum::Number(value)),
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("fv".to_string(), CalcNum::Number(value));
+                            }
                             None => return Err("fv Error"),
                         },
                         _ => return Err("Tvm Error"),
@@ -963,7 +978,7 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
                         *memo_mode = Some(Memorize::Recall(None));
                         Ok(Expr::Memo(Memorize::Recall(None)))
                     }
-                    "sto" => {
+                    "sto" | "to" => {
                         *memo_mode = Some(Memorize::Store(None));
                         Ok(Expr::Memo(Memorize::Store(None)))
                     }
@@ -975,7 +990,7 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
                         *memo_mode = Some(Memorize::Delete(None));
                         Ok(Expr::Memo(Memorize::Delete(None)))
                     }
-                    "tvm" => {
+                    "tvm" | "tv" => {
                         *memo_mode = Some(Memorize::Tvm(None));
                         Ok(Expr::Memo(Memorize::Tvm(None)))
                     }
