@@ -1,5 +1,5 @@
 mod calcrpn;
-// mod finance;
+mod finance;
 use calcrpn::{CalcNum, DegMode, Memorize, manage_stack};
 use crossterm::execute;
 use ratatui::{

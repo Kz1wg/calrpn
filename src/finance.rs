@@ -21,6 +21,31 @@ pub fn present_value(n: f64, iyr: f64, pmt: f64, fv: f64) -> f64 {
     -pv
 }
 
+pub fn i_yr(n: f64, pv: f64, pmt: f64, fv: f64) -> Option<f64> {
+    // 年換算利率(I%RY)
+    // 二分探索法で力技で求める。
+    let mut upper = 100.0;
+    let mut low = -100.0;
+    let mut tyr = (upper + low) / 2.0;
+    let evo = |iyr| present_value(n, iyr, pmt, fv) - pv;
+    for i in 0..100 {
+        tyr = (upper + low) / 2.0;
+        let ee = evo(tyr);
+        if ee > 0.0 {
+            upper = tyr;
+        } else {
+            low = tyr;
+        };
+        if ee.abs() < 0.000001 {
+            break;
+        } else if i == 99 {
+            return None;
+        }
+    }
+
+    Some(tyr)
+}
+
 pub fn number_of_periods(iyr: f64, pv: f64, pmt: f64, fv: f64) -> f64 {
     // 現在価値（PV, Present Value）、利率（IYR, Interest Rate per Year）
     // 未来価値（FV, Future Value）、各期の支払い額（PMT, Payment）
@@ -50,9 +75,11 @@ fn fv_loop(n: f64, iyr: f64, pv: f64, pmt: f64) -> f64 {
 
 #[test]
 fn finance_test() {
-    println!("test: {}", number_of_periods(10.0, 20.0, -1.0, -10.0));
     assert!((fv_loop(12.0, 20.0, -22.0, -1.0) - 39.99).abs() < 0.01);
     assert!((fv_loop(30.0, 10.0, 100.0, -2.0) - -60.4226).abs() < 0.01);
+    assert!(
+        (fv_loop(30.0, 10.0, 100.0, -2.0) - future_value(30.0, 10.0, 100.0, -2.0)).abs() < 0.01
+    );
     assert!((future_value(12.0, 20.0, -22.0, -1.0) - 39.99).abs() < 0.01);
     assert!((payment(12.0, 20.0, -22.0, -40.0) - 1.0).abs() < 0.01);
     assert!((future_value(30.0, 10.0, 100.0, -2.0) - -60.4226).abs() < 0.01);
@@ -60,4 +87,6 @@ fn finance_test() {
     assert!((present_value(24.0, 10.0, -1.0, 60.0) - -27.49372).abs() < 0.01);
     assert!((number_of_periods(10.0, 50.0, -1.0, 0.0) - 64.94871).abs() < 0.01);
     assert!((number_of_periods(10.0, 20.0, 0.0, -25.0) - 26.88864).abs() < 0.01);
+    assert!((i_yr(6.0, -20.0, -1.0, 30.0).unwrap() - 33.287).abs() < 0.01);
+    assert!((i_yr(6.0, -20.0, 0.0, 30.0).unwrap() - 83.896).abs() < 0.01);
 }
