@@ -189,6 +189,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
             match input.trim() {
                 "quit" | "q" => {
                     terminal.clear()?;
+                    ratatui::restore();
                     break;
                 }
                 _ => terminal.clear()?,

@@ -956,6 +956,11 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
             "abs" => Ok(Expr::Monomial(MonomialFunc::Abs)),
             "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
             "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
+            "tn" => Ok(Expr::Memo(Memorize::Store(Some("n".to_string())))),
+            "tiyr" => Ok(Expr::Memo(Memorize::Store(Some("iyr".to_string())))),
+            "tpv" => Ok(Expr::Memo(Memorize::Store(Some("pv".to_string())))),
+            "tpmt" => Ok(Expr::Memo(Memorize::Store(Some("pmt".to_string())))),
+            "tfv" => Ok(Expr::Memo(Memorize::Store(Some("fv".to_string())))),
             _ => match memo_mode {
                 Some(Memorize::Recall(None)) => {
                     *memo_mode = None;
