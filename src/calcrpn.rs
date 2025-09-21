@@ -1,3 +1,4 @@
+use crate::finance;
 use core::f64;
 use num::complex::Complex;
 use std::collections::BTreeMap;
@@ -5,7 +6,6 @@ use std::collections::VecDeque;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
 use std::vec;
-
 trait Help {
     fn help(&self) -> &str;
     fn show_help() -> String;
@@ -141,14 +141,18 @@ impl Help for MonomialFunc {
 pub enum Memorize {
     Recall(Option<String>),
     Clear,
+    Delete(Option<String>),
     Store(Option<String>),
+    Tvm(Option<String>),
 }
 impl Help for Memorize {
     fn help(&self) -> &str {
         match self {
             Memorize::Recall(_) => "rcl : recall memory",
             Memorize::Clear => "mc : clear memory",
+            Memorize::Delete(_) => "mdel : delete memory",
             Memorize::Store(_) => "sto : store memory",
+            Memorize::Tvm(_) => "tvm : calculate time value [n,iyr,pv,pmt,fv]",
         }
     }
     fn show_help() -> String {
@@ -156,6 +160,7 @@ impl Help for Memorize {
             Memorize::Recall(None),
             Memorize::Clear,
             Memorize::Store(None),
+            Memorize::Tvm(None),
         ]
         .map(|x| x.help().to_string())
         .join("\n")
@@ -240,7 +245,94 @@ impl Help for DegMode {
             .join("\n")
     }
 }
+#[derive(Debug, Clone)]
+pub enum TvmItem {
+    Value(f64),
+    None,
+}
+impl TvmItem {
+    fn get_items(memory_map: &BTreeMap<String, CalcNum>, key: &str) -> Self {
+        match memory_map.get(key) {
+            Some(num) => match num.get_realnumber() {
+                Ok(n) => match key {
+                    "n" => Self::Value(n),
+                    "iyr" => Self::Value(n),
+                    "pv" => Self::Value(n),
+                    "pmt" => Self::Value(n),
+                    "fv" => Self::Value(n),
+                    _ => Self::None,
+                },
+                Err(_) => Self::None,
+            },
+            None => Self::None,
+        }
+    }
 
+    fn get_value(memory_map: &BTreeMap<String, CalcNum>, key: &str) -> Option<f64> {
+        match Self::get_items(memory_map, key) {
+            Self::Value(n) => Some(n),
+            Self::None => None,
+        }
+    }
+    fn n_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
+        let iyr = Self::get_value(memory_map, "iyr");
+        let pv = Self::get_value(memory_map, "pv");
+        let pmt = Self::get_value(memory_map, "pmt");
+        let fv = Self::get_value(memory_map, "fv");
+        match (iyr, pv, pmt, fv) {
+            (Some(iyr), Some(pv), Some(pmt), Some(fv)) => {
+                Some(finance::number_of_periods(iyr, pv, pmt, fv))
+            }
+            (_, _, _, _) => None,
+        }
+    }
+    fn payment(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
+        let iyr = Self::get_value(memory_map, "iyr");
+        let pv = Self::get_value(memory_map, "pv");
+        let n = Self::get_value(memory_map, "n");
+        let fv = Self::get_value(memory_map, "fv");
+        match (iyr, pv, n, fv) {
+            (Some(iyr), Some(pv), Some(n), Some(fv)) => Some(finance::payment(n, iyr, pv, fv)),
+            (_, _, _, _) => None,
+        }
+    }
+    fn present_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
+        let iyr = Self::get_value(memory_map, "iyr");
+        let pmt = Self::get_value(memory_map, "pmt");
+        let n = Self::get_value(memory_map, "n");
+        let fv = Self::get_value(memory_map, "fv");
+        match (iyr, pmt, n, fv) {
+            (Some(iyr), Some(pmt), Some(n), Some(fv)) => {
+                Some(finance::present_value(n, iyr, pmt, fv))
+            }
+            (_, _, _, _) => None,
+        }
+    }
+
+    fn i_year_rate(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
+        let pv = Self::get_value(memory_map, "pv");
+        let pmt = Self::get_value(memory_map, "pmt");
+        let n = Self::get_value(memory_map, "n");
+        let fv = Self::get_value(memory_map, "fv");
+        match (pv, pmt, n, fv) {
+            (Some(pv), Some(pmt), Some(n), Some(fv)) => finance::i_yr(n, pv, pmt, fv),
+            (_, _, _, _) => None,
+        }
+    }
+
+    fn future_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
+        let iyr = Self::get_value(memory_map, "iyr");
+        let pmt = Self::get_value(memory_map, "pmt");
+        let n = Self::get_value(memory_map, "n");
+        let pv = Self::get_value(memory_map, "pv");
+        match (iyr, pmt, n, pv) {
+            (Some(iyr), Some(pmt), Some(n), Some(pv)) => {
+                Some(finance::future_value(n, iyr, pv, pmt))
+            }
+            (_, _, _, _) => None,
+        }
+    }
+}
 #[derive(Debug, Clone)]
 pub enum CalcNum {
     Number(f64),
@@ -591,6 +683,13 @@ pub fn manage_stack(
             Memorize::Clear => {
                 memory_map.clear();
             }
+            Memorize::Delete(key) => {
+                if let Some(inkey) = key
+                    && let Some(_get) = memory_map.get(&inkey)
+                {
+                    memory_map.remove(&inkey);
+                }
+            }
             Memorize::Store(key) => {
                 if let Some(inkey) = key {
                     if let Some(val) = calstack.pop_back() {
@@ -598,6 +697,48 @@ pub fn manage_stack(
                         calstack.push_back(val);
                     } else {
                         return Err("Stack is Empty");
+                    }
+                }
+            }
+            Memorize::Tvm(key) => {
+                if let Some(inkey) = key {
+                    match inkey.as_str() {
+                        "n" => match TvmItem::n_value(memory_map) {
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
+                            }
+                            None => return Err("n_value Error"),
+                        },
+                        "iyr" => match TvmItem::i_year_rate(memory_map) {
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
+                            }
+                            None => return Err("i_year Error"),
+                        },
+                        "pv" => match TvmItem::present_value(memory_map) {
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("pv".to_string(), CalcNum::Number(value));
+                            }
+                            None => return Err("pv Error"),
+                        },
+                        "pmt" => match TvmItem::payment(memory_map) {
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("pmt".to_string(), CalcNum::Number(value));
+                            }
+                            None => return Err("pmt Error"),
+                        },
+                        "fv" => match TvmItem::future_value(memory_map) {
+                            Some(value) => {
+                                calstack.push_back(CalcNum::Number(value));
+                                memory_map.insert("fv".to_string(), CalcNum::Number(value));
+                            }
+                            None => return Err("fv Error"),
+                        },
+                        _ => return Err("Tvm Error"),
                     }
                 }
             }
@@ -815,6 +956,11 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
             "abs" => Ok(Expr::Monomial(MonomialFunc::Abs)),
             "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
             "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
+            "tn" => Ok(Expr::Memo(Memorize::Store(Some("n".to_string())))),
+            "tiyr" => Ok(Expr::Memo(Memorize::Store(Some("iyr".to_string())))),
+            "tpv" => Ok(Expr::Memo(Memorize::Store(Some("pv".to_string())))),
+            "tpmt" => Ok(Expr::Memo(Memorize::Store(Some("pmt".to_string())))),
+            "tfv" => Ok(Expr::Memo(Memorize::Store(Some("fv".to_string())))),
             _ => match memo_mode {
                 Some(Memorize::Recall(None)) => {
                     *memo_mode = None;
@@ -824,18 +970,34 @@ fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr,
                     *memo_mode = None;
                     Ok(Expr::Memo(Memorize::Store(Some(expression.to_string()))))
                 }
+                Some(Memorize::Delete(None)) => {
+                    *memo_mode = None;
+                    Ok(Expr::Memo(Memorize::Delete(Some(expression.to_string()))))
+                }
+                Some(Memorize::Tvm(None)) => {
+                    *memo_mode = None;
+                    Ok(Expr::Memo(Memorize::Tvm(Some(expression.to_string()))))
+                }
                 _ => match expression.to_lowercase().as_str() {
                     "rcl" => {
                         *memo_mode = Some(Memorize::Recall(None));
                         Ok(Expr::Memo(Memorize::Recall(None)))
                     }
-                    "sto" => {
+                    "sto" | "to" => {
                         *memo_mode = Some(Memorize::Store(None));
                         Ok(Expr::Memo(Memorize::Store(None)))
                     }
                     "mc" | "mcl" => {
                         *memo_mode = None;
                         Ok(Expr::Memo(Memorize::Clear))
+                    }
+                    "mdel" | "mdl" => {
+                        *memo_mode = Some(Memorize::Delete(None));
+                        Ok(Expr::Memo(Memorize::Delete(None)))
+                    }
+                    "tvm" | "tv" => {
+                        *memo_mode = Some(Memorize::Tvm(None));
+                        Ok(Expr::Memo(Memorize::Tvm(None)))
                     }
                     _ => Ok(Expr::Memo(Memorize::Recall(Some(expression.to_string())))),
                 },

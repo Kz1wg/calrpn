@@ -1,5 +1,5 @@
 mod calcrpn;
-// mod finance;
+mod finance;
 use calcrpn::{CalcNum, DegMode, Memorize, manage_stack};
 use crossterm::execute;
 use ratatui::{
@@ -189,6 +189,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
             match input.trim() {
                 "quit" | "q" => {
                     terminal.clear()?;
+                    ratatui::restore();
                     break;
                 }
                 _ => terminal.clear()?,
