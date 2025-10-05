@@ -28,7 +28,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     let mut memory = String::new();
     let mut message = String::new();
     let mut decimal_point: usize = 3;
-    let mut last_stackresult = vec![(stack.clone(), result.clone())];
+    let mut last_stackresult: VecDeque<(VecDeque<CalcNum>, String)> = VecDeque::new();
     let mut do_continue = true;
     let mut input = String::new();
     let mut readline = DefaultEditor::new()?;
@@ -118,13 +118,14 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
             match input.trim() {
                 "undo" => {
                     // undoの処理
-                    last_stackresult.pop();
-                    if let Some((st, rst)) = last_stackresult.pop() {
+                    last_stackresult.pop_back().unwrap_or_default();
+                    if let Some((st, rst)) = last_stackresult.pop_back() {
                         stack = st;
                         result = rst;
                         update_stack(&stack, &mut result, decimal_point);
                     };
                     message = "Undo".to_string();
+                    last_stackresult.push_back((stack.clone(), result.clone()));
                     continue;
                 }
                 "help" => {
@@ -171,9 +172,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                             // 入力を履歴に追加
                             readline.add_history_entry(&input)?;
                             update_log(&mut input_log, &mut message);
-                            last_stackresult.push((stack.clone(), result.clone()));
+                            last_stackresult.push_back((stack.clone(), result.clone()));
                             if last_stackresult.len() > 4 {
-                                last_stackresult = last_stackresult[1..].to_vec();
+                                last_stackresult.pop_front();
                             }
                         }
                         Err(e) => {
