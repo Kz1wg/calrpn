@@ -152,7 +152,9 @@ impl Help for Memorize {
             Memorize::Clear => "mc : clear memory",
             Memorize::Delete(_) => "mdel : delete memory",
             Memorize::Store(_) => "sto : store memory",
-            Memorize::Tvm(_) => "tvm : calculate time value [n,iyr,pv,pmt,fv]",
+            Memorize::Tvm(_) => {
+                "tvm : calculate time value [n,iyr,pv,pmt,fv] // to memo -> tn,tiyr,tpv,tpmt,tfv"
+            }
         }
     }
     fn show_help() -> String {
