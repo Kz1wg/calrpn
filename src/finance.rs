@@ -10,8 +10,8 @@ pub fn payment(n: f64, iyr: f64, pv: f64, fv: f64) -> f64 {
     // 現在価値（PV, Present Value）、利率（IYR, Interest Rate per Year）
     // 未来価値（FV, Future Value）、支払い回数（N, Number of Periods）
     let i_yr = iyr / 100.0 / 12.0;
-    let pmt = (fv - pv * (1.0 + i_yr).powf(n)) / ((1.0 + i_yr).powf(n) - 1.0) * i_yr;
-    pmt
+
+    (fv - pv * (1.0 + i_yr).powf(n)) / ((1.0 + i_yr).powf(n) - 1.0) * i_yr
 }
 pub fn present_value(n: f64, iyr: f64, pmt: f64, fv: f64) -> f64 {
     // 未来価値（FV, Future Value）、利率（IYR, Interest Rate per Year）

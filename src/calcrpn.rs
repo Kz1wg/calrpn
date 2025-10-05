@@ -708,7 +708,7 @@ pub fn manage_stack(
                         "n" => match TvmItem::n_value(memory_map) {
                             Some(value) => {
                                 calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
+                                memory_map.insert("n".to_string(), CalcNum::Number(value));
                             }
                             None => return Err("n_value Error"),
                         },
