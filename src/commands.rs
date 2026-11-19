@@ -122,6 +122,17 @@ pub static COMMANDS: &[Command] = &[
     cmd(&["todeg"], A::Monomial(MonomialFunc::ToDeg), C::Monomial, "pi todeg -> radians to degrees"),
     cmd(&["torad"], A::Monomial(MonomialFunc::ToRad), C::Monomial, "180 torad -> degrees to radians"),
     cmd(&["abs"], A::Monomial(MonomialFunc::Abs), C::Monomial, "3+4i abs -> |3+4i|"),
+    cmd(&["chs", "neg"], A::Monomial(MonomialFunc::Chs), C::Monomial, "5 chs -> -5"),
+    cmd(&["inv", "1/x"], A::Monomial(MonomialFunc::Inv), C::Monomial, "4 inv -> 1/4"),
+    cmd(&["sq", "x^2"], A::Monomial(MonomialFunc::Square), C::Monomial, "3 sq -> 3^2"),
+    cmd(&["exp", "e^x"], A::Monomial(MonomialFunc::Exp), C::Monomial, "1 exp -> e^1"),
+    cmd(
+        &["10^x", "alog", "pow10"],
+        A::Monomial(MonomialFunc::Pow10),
+        C::Monomial,
+        "3 10^x -> 10^3",
+    ),
+    cmd(&["round", "rnd"], A::Monomial(MonomialFunc::Round), C::Monomial, "2.5 round -> 3"),
     cmd(
         &["!", "n!", "fact", "factorial"],
         A::Monomial(MonomialFunc::Factorial),
@@ -150,6 +161,12 @@ pub static COMMANDS: &[Command] = &[
     cmd(&["rup", "rollup"], A::Stack(OperateStack::RollUp), C::Stack, "roll up stack"),
     cmd(&["rdn", "rolldown"], A::Stack(OperateStack::RollDown), C::Stack, "roll down stack"),
     cmd(&["sum"], A::Stack(OperateStack::Sum), C::Stack, "sum all stack"),
+    cmd(
+        &["lastx", "lx"],
+        A::Stack(OperateStack::LastX),
+        C::Stack,
+        "recall X used by the last operation",
+    ),
     // 角度モード
     cmd(&["deg"], A::Stack(OperateStack::Deg), C::Mode, "set degree mode"),
     cmd(&["rad"], A::Stack(OperateStack::Rad), C::Mode, "set radian mode"),
@@ -169,13 +186,29 @@ pub static COMMANDS: &[Command] = &[
 
 // main 側で処理するアプリコマンド (ヘルプ表示用)
 const APP_COMMANDS: &[(&str, &str)] = &[
-    ("fix <n>", "set decimal places"),
+    ("fix <n>", "fixed notation, n decimal places"),
+    ("sci <n>", "scientific notation (1.23e+04)"),
+    ("eng <n>", "engineering notation (12.3e+03)"),
+    ("sep", "toggle thousands separator"),
     ("clv <key>", "delete memory key"),
     ("undo", "undo last operation"),
     ("clh, clearhist", "clear input history"),
     ("help", "show this help"),
     ("quit, q", "quit"),
 ];
+
+// Tab 補完の候補になるアプリコマンド
+const APP_WORDS: &[&str] = &[
+    "undo", "help", "quit", "fix", "sci", "eng", "sep", "clv", "clh", "clearhist",
+];
+
+// Tab 補完の候補になる全単語 (コマンド名・別名・アプリコマンド)
+pub fn all_words() -> impl Iterator<Item = &'static str> {
+    COMMANDS
+        .iter()
+        .flat_map(|c| c.names.iter().copied())
+        .chain(APP_WORDS.iter().copied())
+}
 
 // 名前(小文字)からコマンドを探す
 pub fn find(name: &str) -> Option<&'static Command> {

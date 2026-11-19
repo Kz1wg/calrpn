@@ -51,6 +51,12 @@ pub enum MonomialFunc {
     Factorial,
     ToPolar,
     ToRec,
+    Chs,
+    Inv,
+    Square,
+    Exp,
+    Pow10,
+    Round,
 }
 
 // 記憶領域の列挙型
@@ -101,6 +107,7 @@ pub enum OperateStack {
     RollUp,
     RollDown,
     Sum,
+    LastX,
     Deg,
     Rad,
 }
@@ -110,11 +117,6 @@ pub enum OperateStack {
 pub enum DegMode {
     Rad,
     Deg,
-}
-
-pub fn print_help() {
-    println!("calrpn");
-    println!("{}", commands::help_text());
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -199,15 +201,134 @@ impl Rem for CalcNum {
     }
 }
 
-impl CalcNum {
-    pub fn num_format(&self, n_place: usize) -> String {
+// 数値の表記法
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Notation {
+    Fix, // 固定小数点 (極端な値は自動で指数表記)
+    Sci, // 指数表記 1.235e+03
+    Eng, // 工学表記 (指数が3の倍数) 12.345e+03
+}
+
+impl Notation {
+    pub fn label(self) -> &'static str {
         match self {
-            CalcNum::Number(val) => match self.is_integer() {
-                true => format!("{val:.0}"),
-                false => format!("{val:.n_place$}"),
-            },
+            Notation::Fix => "FIX",
+            Notation::Sci => "SCI",
+            Notation::Eng => "ENG",
+        }
+    }
+}
+
+// 数値の表示形式
+#[derive(Debug, Clone, Copy)]
+pub struct DisplayFormat {
+    pub notation: Notation,
+    pub decimals: usize,
+    // 3桁区切り (FIX のみ)
+    pub grouping: bool,
+}
+
+impl Default for DisplayFormat {
+    fn default() -> Self {
+        Self {
+            notation: Notation::Fix,
+            decimals: 3,
+            grouping: true,
+        }
+    }
+}
+
+// FIX でこれ以上大きい値は指数表記にする (f64 で整数を正確に表せる範囲の目安)
+const FIX_MAX: f64 = 1e15;
+
+// 実数を整形する。trim_integer が true なら整数は小数部を省く
+fn format_real(v: f64, fmt: &DisplayFormat, trim_integer: bool) -> String {
+    if !v.is_finite() {
+        return format!("{v}"); // inf, -inf, NaN
+    }
+    // -0 を 0 として表示
+    let v = if v == 0.0 { 0.0 } else { v };
+    let n = fmt.decimals;
+    match fmt.notation {
+        Notation::Sci => format_sci(v, n),
+        Notation::Eng => format_eng(v, n),
+        Notation::Fix => {
+            let abs = v.abs();
+            // 大きすぎる値、または小さすぎて 0 に見えてしまう値は指数表記にする
+            let too_small = abs != 0.0 && abs < 0.5 * 10f64.powi(-(n as i32));
+            if abs >= FIX_MAX || too_small {
+                return format_sci(v, n);
+            }
+            let s = if trim_integer && v.fract() == 0.0 {
+                format!("{v:.0}")
+            } else {
+                format!("{v:.n$}")
+            };
+            if fmt.grouping { group_thousands(&s) } else { s }
+        }
+    }
+}
+
+// 1234.5 -> "1.235e+03"
+fn format_sci(v: f64, n: usize) -> String {
+    let s = format!("{v:.n$e}");
+    match s.split_once('e') {
+        Some((mantissa, exp)) => {
+            let exp: i32 = exp.parse().unwrap_or(0);
+            format!("{mantissa}e{exp:+03}")
+        }
+        None => s,
+    }
+}
+
+// 12345 -> "12.345e+03" (指数を3の倍数にする)
+fn format_eng(v: f64, n: usize) -> String {
+    if v == 0.0 {
+        return format!("{:.n$}e+00", 0.0);
+    }
+    let mut exp = (v.abs().log10().floor() as i32).div_euclid(3) * 3;
+    let mut mantissa = format!("{:.n$}", v / 10f64.powi(exp));
+    // 丸めで 1000.0 になった場合は次の桁へ繰り上げる
+    if mantissa.trim_start_matches('-').parse::<f64>().is_ok_and(|m| m >= 1000.0) {
+        exp += 3;
+        mantissa = format!("{:.n$}", v / 10f64.powi(exp));
+    }
+    format!("{mantissa}e{exp:+03}")
+}
+
+// "-1234567.89" -> "-1,234,567.89"
+fn group_thousands(s: &str) -> String {
+    let (sign, rest) = match s.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", s),
+    };
+    let (int_part, frac_part) = match rest.find('.') {
+        Some(i) => rest.split_at(i),
+        None => (rest, ""),
+    };
+    let mut grouped = String::new();
+    for (i, c) in int_part.chars().enumerate() {
+        if i > 0 && (int_part.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    format!("{sign}{grouped}{frac_part}")
+}
+
+impl CalcNum {
+    pub fn num_format(&self, fmt: &DisplayFormat) -> String {
+        match self {
+            CalcNum::Number(val) => format_real(*val, fmt, true),
             CalcNum::Complex(val) => {
-                format!("{:.2$}  i:{:.2$}", val.re, val.im, n_place)
+                // 3.000 + 4.000i / 3.000 - 4.000i (各部は小数部を省かず揃える)
+                let sign = if val.im.is_sign_negative() { '-' } else { '+' };
+                format!(
+                    "{} {} {}i",
+                    format_real(val.re, fmt, false),
+                    sign,
+                    format_real(val.im.abs(), fmt, false)
+                )
             }
         }
     }
@@ -423,6 +544,45 @@ impl CalcNum {
             CalcNum::Complex(val) => CalcNum::Number(val.norm()),
         }
     }
+
+    fn negate(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(-val),
+            CalcNum::Complex(val) => CalcNum::Complex(-val),
+        }
+    }
+
+    fn exp(&self) -> CalcNum {
+        match self {
+            CalcNum::Number(val) => CalcNum::Number(val.exp()),
+            CalcNum::Complex(val) => CalcNum::Complex(val.exp()),
+        }
+    }
+
+    fn round(&self) -> CalcResult<CalcNum> {
+        Ok(CalcNum::Number(self.get_realnumber()?.round()))
+    }
+}
+
+// 計算の状態 (Undo のスナップショット単位)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalcState {
+    pub stack: VecDeque<CalcNum>,
+    pub memo_map: BTreeMap<String, CalcNum>,
+    pub degmode: DegMode,
+    // 直前の演算で消費した X (lastx で呼び戻す)
+    pub last_x: Option<CalcNum>,
+}
+
+impl Default for CalcState {
+    fn default() -> Self {
+        Self {
+            stack: VecDeque::new(),
+            memo_map: BTreeMap::new(),
+            degmode: DegMode::Deg,
+            last_x: None,
+        }
+    }
 }
 
 pub const STACK_SIZE: usize = 12;
@@ -431,49 +591,35 @@ pub const STACK_SIZE: usize = 12;
 // 途中でエラーになっても状態が壊れないよう、作業用コピーで計算して成功時のみ反映する
 pub fn manage_stack(
     expression: &str,
-    calstack: &mut VecDeque<CalcNum>,
-    degmode: &mut DegMode,
-    memory_map: &mut BTreeMap<String, CalcNum>,
+    state: &mut CalcState,
     memo_mode: &mut Option<Memorize>,
 ) -> CalcResult<()> {
-    let mut work_stack = calstack.clone();
-    let mut work_degmode = *degmode;
-    let mut work_memory = memory_map.clone();
+    let mut work_state = state.clone();
     let mut work_memo_mode = memo_mode.clone();
 
-    apply_expression(
-        expression,
-        &mut work_stack,
-        &mut work_degmode,
-        &mut work_memory,
-        &mut work_memo_mode,
-    )?;
+    apply_expression(expression, &mut work_state, &mut work_memo_mode)?;
 
     // スタックが上限を超えた場合、古い要素(先頭)から削除
-    while work_stack.len() > STACK_SIZE {
-        work_stack.pop_front();
+    while work_state.stack.len() > STACK_SIZE {
+        work_state.stack.pop_front();
     }
 
-    *calstack = work_stack;
-    *degmode = work_degmode;
-    *memory_map = work_memory;
+    *state = work_state;
     *memo_mode = work_memo_mode;
     Ok(())
 }
 
-// 式を評価してスタックを更新する
+// 式を評価して状態を更新する
 // エラー時に途中状態が残ってもよい (manage_stack が作業用コピーを破棄するため)
 fn apply_expression(
     expression: &str,
-    calstack: &mut VecDeque<CalcNum>,
-    degmode: &mut DegMode,
-    memory_map: &mut BTreeMap<String, CalcNum>,
+    state: &mut CalcState,
     memo_mode: &mut Option<Memorize>,
 ) -> CalcResult<()> {
     // 空入力で最後尾のアイテムをコピー HP電卓の ENTER と同様
     if expression.trim().is_empty() {
-        if let Some(top) = calstack.back().cloned() {
-            calstack.push_back(top);
+        if let Some(top) = state.stack.back().cloned() {
+            state.stack.push_back(top);
         }
         return Ok(());
     }
@@ -487,12 +633,12 @@ fn apply_expression(
 
     for item in items {
         match item {
-            Expr::Numbers(num) => calstack.push_back(num),
-            Expr::Const(c) => calstack.push_back(c.value()),
-            Expr::Binomial(f) => apply_binomial(f, calstack)?,
-            Expr::Monomial(f) => apply_monomial(f, calstack, *degmode)?,
-            Expr::Opstack(op) => apply_operate_stack(op, calstack, degmode)?,
-            Expr::Memo(memo) => apply_memorize(memo, calstack, memory_map)?,
+            Expr::Numbers(num) => state.stack.push_back(num),
+            Expr::Const(c) => state.stack.push_back(c.value()),
+            Expr::Binomial(f) => apply_binomial(f, state)?,
+            Expr::Monomial(f) => apply_monomial(f, state)?,
+            Expr::Opstack(op) => apply_operate_stack(op, state)?,
+            Expr::Memo(memo) => apply_memorize(memo, &mut state.stack, &mut state.memo_map)?,
         }
     }
     Ok(())
@@ -540,8 +686,9 @@ fn parse_exp(token: &str, memo_mode: &mut Option<Memorize>) -> Expr {
 }
 
 // 二項演算: Y(2番目) と X(最上段) を取り出して結果を積む
-fn apply_binomial(func: BinomialFunc, calstack: &mut VecDeque<CalcNum>) -> CalcResult<()> {
-    let (y, x) = get_two_item(calstack)?;
+fn apply_binomial(func: BinomialFunc, state: &mut CalcState) -> CalcResult<()> {
+    let (y, x) = get_two_item(&mut state.stack)?;
+    state.last_x = Some(x.clone());
     let result = match func {
         BinomialFunc::Add => y + x,
         BinomialFunc::Subtract => y - x,
@@ -552,17 +699,15 @@ fn apply_binomial(func: BinomialFunc, calstack: &mut VecDeque<CalcNum>) -> CalcR
         BinomialFunc::NPr => y.permutation(&x)?,
         BinomialFunc::NCr => y.combination(&x)?,
     };
-    calstack.push_back(result);
+    state.stack.push_back(result);
     Ok(())
 }
 
 // 単項演算: X を取り出して結果を積む
-fn apply_monomial(
-    func: MonomialFunc,
-    calstack: &mut VecDeque<CalcNum>,
-    degmode: DegMode,
-) -> CalcResult<()> {
-    let x = get_one_item(calstack)?;
+fn apply_monomial(func: MonomialFunc, state: &mut CalcState) -> CalcResult<()> {
+    let degmode = state.degmode;
+    let x = get_one_item(&mut state.stack)?;
+    state.last_x = Some(x.clone());
     let result = match func {
         MonomialFunc::Sqrt => x.sqrt(),
         MonomialFunc::Log => x.log10(),
@@ -579,17 +724,20 @@ fn apply_monomial(
         MonomialFunc::Factorial => x.factorial()?,
         MonomialFunc::ToPolar => x.to_polar(&degmode)?,
         MonomialFunc::ToRec => x.to_rectangular(&degmode)?,
+        MonomialFunc::Chs => x.negate(),
+        MonomialFunc::Inv => CalcNum::Number(1.0) / x,
+        MonomialFunc::Square => x.clone() * x,
+        MonomialFunc::Exp => x.exp(),
+        MonomialFunc::Pow10 => CalcNum::Number(10.0).pow(&x),
+        MonomialFunc::Round => x.round()?,
     };
-    calstack.push_back(result);
+    state.stack.push_back(result);
     Ok(())
 }
 
 // スタック操作・モード切替
-fn apply_operate_stack(
-    op: OperateStack,
-    calstack: &mut VecDeque<CalcNum>,
-    degmode: &mut DegMode,
-) -> CalcResult<()> {
+fn apply_operate_stack(op: OperateStack, state: &mut CalcState) -> CalcResult<()> {
+    let calstack = &mut state.stack;
     match op {
         OperateStack::Swap => {
             let len = require_len(calstack, 2)?;
@@ -617,8 +765,12 @@ fn apply_operate_stack(
             calstack.clear();
             calstack.push_back(CalcNum::Number(total));
         }
-        OperateStack::Deg => *degmode = DegMode::Deg,
-        OperateStack::Rad => *degmode = DegMode::Rad,
+        OperateStack::LastX => {
+            let last_x = state.last_x.clone().ok_or("No last X")?;
+            calstack.push_back(last_x);
+        }
+        OperateStack::Deg => state.degmode = DegMode::Deg,
+        OperateStack::Rad => state.degmode = DegMode::Rad,
     }
     Ok(())
 }
@@ -730,28 +882,20 @@ fn product_range(start: u64, end: u64) -> Result<f64, &'static str> {
 #[cfg(test)]
 mod tests {
 
-    use crate::calcrpn::STACK_SIZE;
-    use crate::{CalcNum, DegMode, manage_stack};
-    use core::f64;
+    use super::{CalcNum, CalcState, DegMode, DisplayFormat, Notation, STACK_SIZE, manage_stack};
     use std::collections::{BTreeMap, VecDeque};
+    use std::f64::consts;
 
     #[test]
     fn test() -> Result<(), String> {
         let test_manage = |exp| {
-            let mut teststack = VecDeque::new();
-            let mut test_memory = BTreeMap::new();
+            let mut state = rad_state();
             let mut memomode = None;
-            match manage_stack(
-                exp,
-                &mut teststack,
-                &mut DegMode::Rad,
-                &mut test_memory,
-                &mut memomode,
-            ) {
+            match manage_stack(exp, &mut state, &mut memomode) {
                 Ok(_) => (),
                 Err(e) => eprintln!("{e}"),
             };
-            match &teststack[0] {
+            match &state.stack[0] {
                 CalcNum::Number(data) => (*data, 0.0),
                 CalcNum::Complex(data) => (data.re, data.im),
             }
@@ -781,18 +925,18 @@ mod tests {
         assert_eq!(realnumtest("15 4 %"), 3.0);
         assert_eq!(realnumtest("51 19 %"), 13.0);
         assert_eq!(realnumtest("9.0 sqrt"), 3.0);
-        assert_eq!(realnumtest("10.0 ln"), f64::consts::LN_10);
+        assert_eq!(realnumtest("10.0 ln"), consts::LN_10);
         assert_eq!(realnumtest("100.0 log"), 2.0);
         assert_eq!(realnumtest("9.0 3 3 5 sum"), 20.0);
         assert!((realnumtest("pi 6 / sin") - 0.5).abs() < 1e-10);
         assert!((realnumtest("pi 3 / cos") - 0.5).abs() < 1e-10);
         assert!((realnumtest("pi 4 / tan") - 1.0).abs() < 1e-10);
-        assert!((realnumtest("0.5 asin") - f64::consts::PI / 6.0).abs() < 1e-10);
-        assert!((realnumtest("0.5 acos") - f64::consts::PI / 3.0).abs() < 1e-10);
-        assert!((realnumtest("1.0 atan") - f64::consts::PI / 4.0).abs() < 1e-10);
-        assert_eq!(realnumtest("pi"), f64::consts::PI);
-        assert_eq!(realnumtest("e"), f64::consts::E);
-        assert!((realnumtest("60 torad") - f64::consts::PI / 3.0).abs() < 1e-10);
+        assert!((realnumtest("0.5 asin") - consts::PI / 6.0).abs() < 1e-10);
+        assert!((realnumtest("0.5 acos") - consts::PI / 3.0).abs() < 1e-10);
+        assert!((realnumtest("1.0 atan") - consts::PI / 4.0).abs() < 1e-10);
+        assert_eq!(realnumtest("pi"), consts::PI);
+        assert_eq!(realnumtest("e"), consts::E);
+        assert!((realnumtest("60 torad") - consts::PI / 3.0).abs() < 1e-10);
         assert!((realnumtest("pi 3 / todeg") - 60.0).abs() < 1e-10);
         assert_eq!(realnumtest("2 3 + 12 *"), 60.0);
         assert_eq!(realnumtest("3 3 3 sum sqrt"), 3.0);
@@ -840,12 +984,18 @@ mod tests {
 
     // 空の状態から式を評価し、(結果, スタック, メモリ) を返す
     fn run(exp: &str) -> (Result<(), String>, VecDeque<CalcNum>, BTreeMap<String, CalcNum>) {
-        let mut stack = VecDeque::new();
-        let mut memory = BTreeMap::new();
+        let mut state = rad_state();
         let mut memomode = None;
-        let result = manage_stack(exp, &mut stack, &mut DegMode::Rad, &mut memory, &mut memomode)
-            .map_err(|e| e.to_string());
-        (result, stack, memory)
+        let result = manage_stack(exp, &mut state, &mut memomode).map_err(|e| e.to_string());
+        (result, state.stack, state.memo_map)
+    }
+
+    // テストはラジアンモードで行う
+    fn rad_state() -> CalcState {
+        CalcState {
+            degmode: DegMode::Rad,
+            ..CalcState::default()
+        }
     }
 
     fn top(stack: &VecDeque<CalcNum>) -> f64 {
@@ -855,26 +1005,106 @@ mod tests {
         }
     }
 
+    fn fmt(notation: Notation, decimals: usize, grouping: bool) -> DisplayFormat {
+        DisplayFormat {
+            notation,
+            decimals,
+            grouping,
+        }
+    }
+
+    fn show(v: f64, f: DisplayFormat) -> String {
+        CalcNum::Number(v).num_format(&f)
+    }
+
+    #[test]
+    fn complex_format() {
+        use num::complex::Complex;
+        let f = fmt(Notation::Fix, 2, true);
+        assert_eq!(CalcNum::Complex(Complex::new(3.0, -4.0)).num_format(&f), "3.00 - 4.00i");
+        let f = fmt(Notation::Fix, 1, true);
+        assert_eq!(CalcNum::Complex(Complex::new(1.5, 2.0)).num_format(&f), "1.5 + 2.0i");
+    }
+
+    #[test]
+    fn fix_format() {
+        let f = fmt(Notation::Fix, 3, true);
+        assert_eq!(show(3.0, f), "3");
+        assert_eq!(show(0.5, f), "0.500");
+        assert_eq!(show(1234567.0, f), "1,234,567");
+        assert_eq!(show(-1234.5, f), "-1,234.500");
+        assert_eq!(show(123.0, f), "123");
+        assert_eq!(show(-0.0, f), "0");
+        // 極端な値は指数表記
+        assert_eq!(show(1e300, f), "1.000e+300");
+        assert_eq!(show(1e-5, f), "1.000e-05");
+        assert_eq!(show(0.0004, f), "4.000e-04");
+        assert_eq!(show(f64::INFINITY, f), "inf");
+        assert_eq!(show(f64::NAN, f), "NaN");
+        // 区切りなし
+        assert_eq!(show(1234567.25, fmt(Notation::Fix, 2, false)), "1234567.25");
+    }
+
+    #[test]
+    fn sci_and_eng_format() {
+        let sci = fmt(Notation::Sci, 2, true);
+        // (丸めの境界 x.xx5 は2進数の表現誤差で結果が揺れるため避ける)
+        assert_eq!(show(12346.0, sci), "1.23e+04");
+        assert_eq!(show(-0.00012, sci), "-1.20e-04");
+        assert_eq!(show(0.0, sci), "0.00e+00");
+
+        let eng = fmt(Notation::Eng, 2, true);
+        assert_eq!(show(12346.0, eng), "12.35e+03");
+        assert_eq!(show(0.01, eng), "10.00e-03");
+        assert_eq!(show(1.5, eng), "1.50e+00");
+        assert_eq!(show(-470000.0, eng), "-470.00e+03");
+        // 丸めで 1000 になる場合は繰り上げ
+        assert_eq!(show(999999.0, eng), "1.00e+06");
+        assert_eq!(show(0.0, eng), "0.00e+00");
+    }
+
     #[test]
     fn error_keeps_state_unchanged() {
         // 途中でエラーになった場合、スタック・メモリ・モードは入力前のまま
-        let mut stack = VecDeque::from([CalcNum::Number(10.0)]);
-        let mut memory = BTreeMap::new();
-        let mut degmode = DegMode::Rad;
+        let mut state = rad_state();
+        state.stack.push_back(CalcNum::Number(10.0));
+        let before = state.clone();
         let mut memomode = None;
 
-        let result = manage_stack(
-            "1 2 + sto x rad deg unknown_key",
-            &mut stack,
-            &mut degmode,
-            &mut memory,
-            &mut memomode,
-        );
+        let result = manage_stack("1 2 + sto x rad deg unknown_key", &mut state, &mut memomode);
         assert!(result.is_err());
-        assert_eq!(stack.len(), 1);
-        assert!(matches!(stack[0], CalcNum::Number(v) if v == 10.0));
-        assert!(memory.is_empty());
-        assert!(matches!(degmode, DegMode::Rad));
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn new_functions() {
+        let (_, stack, _) = run("5 chs");
+        assert_eq!(top(&stack), -5.0);
+        let (_, stack, _) = run("4 inv");
+        assert_eq!(top(&stack), 0.25);
+        let (_, stack, _) = run("3 sq");
+        assert_eq!(top(&stack), 9.0);
+        let (_, stack, _) = run("0 exp");
+        assert_eq!(top(&stack), 1.0);
+        let (_, stack, _) = run("3 10^x");
+        assert!((top(&stack) - 1000.0).abs() < 1e-9);
+        let (_, stack, _) = run("2.5 round -2.5 round");
+        assert_eq!(stack, VecDeque::from([3.0, -3.0].map(CalcNum::Number)));
+        assert!(run("1+2i round").0.is_err());
+        // 複素数にも対応
+        let (_, stack, _) = run("3+4i chs");
+        assert_eq!(stack.back(), Some(&CalcNum::Complex(num::complex::Complex::new(-3.0, -4.0))));
+    }
+
+    #[test]
+    fn last_x() {
+        // 二項演算・単項演算で消費した X を呼び戻せる
+        let (_, stack, _) = run("10 4 - lastx");
+        assert_eq!(stack, VecDeque::from([6.0, 4.0].map(CalcNum::Number)));
+        let (_, stack, _) = run("9 sqrt lastx");
+        assert_eq!(stack, VecDeque::from([3.0, 9.0].map(CalcNum::Number)));
+        // まだ演算していなければエラー
+        assert!(run("1 lastx").0.is_err());
     }
 
     #[test]
