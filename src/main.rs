@@ -28,7 +28,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     let mut memory = String::new();
     let mut message = String::new();
     let mut decimal_point: usize = 3;
-    let mut last_stackresult: VecDeque<(VecDeque<CalcNum>, String)> = VecDeque::new();
+    let mut undo_history: VecDeque<Snapshot> = VecDeque::new();
     let mut do_continue = true;
     let mut input = String::new();
     let mut readline = DefaultEditor::new()?;
@@ -56,7 +56,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                             Constraint::Length(4),
                             Constraint::Length(result_len as u16),
                             Constraint::Length(2),
-                            Constraint::Length(2),
+                            Constraint::Length(1),
                         ]
                         .as_ref(),
                     )
@@ -117,15 +117,18 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
 
             match input.trim() {
                 "undo" => {
-                    // undoの処理
-                    last_stackresult.pop_back().unwrap_or_default();
-                    if let Some((st, rst)) = last_stackresult.pop_back() {
-                        stack = st;
-                        result = rst;
+                    // undoの処理: 直前の操作の前の状態に戻す
+                    input_log.pop_back();
+                    if let Some(prev) = undo_history.pop_back() {
+                        prev.restore(&mut stack, &mut memo_map, &mut degmode);
+                        memo_mode = None;
                         update_stack(&stack, &mut result, decimal_point);
-                    };
-                    message = "Undo".to_string();
-                    last_stackresult.push_back((stack.clone(), result.clone()));
+                        update_memo(&memo_map, &mut memory);
+                        message = format!("Undo (remaining: {})", undo_history.len());
+                    } else {
+                        message = "Nothing to undo".to_string();
+                    }
+                    terminal.clear()?;
                     continue;
                 }
                 "help" => {
@@ -141,25 +144,46 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                 }
                 _ => {
                     let app_command = input.split_whitespace().collect::<Vec<&str>>();
-                    if app_command.len() == 2 {
-                        // 'fix 2'のように引数を取るコマンド
-                        match app_command[0] {
+                    // 'fix 2'のように引数を取るアプリコマンド
+                    // 処理した場合は計算(manage_stack)へ渡さずに次の入力へ
+                    if let [command, arg] = app_command[..] {
+                        match command {
                             "fix" => {
-                                // fixの処理
-                                let fix = app_command[1].parse::<usize>().unwrap_or(3);
-                                decimal_point = fix;
+                                match arg.parse::<usize>() {
+                                    Ok(fix) => {
+                                        decimal_point = fix;
+                                        readline.add_history_entry(&input)?;
+                                        update_log(&mut input_log, &mut message);
+                                    }
+                                    Err(_) => {
+                                        message = format!("Error: invalid fix value '{arg}'");
+                                        input_log.pop_back();
+                                    }
+                                }
+                                update_stack(&stack, &mut result, decimal_point);
+                                terminal.clear()?;
+                                continue;
                             }
                             "clv" => {
                                 // 特定のmemo keyを削除
-                                memo_map.remove_entry(app_command[1]);
+                                if memo_map.contains_key(arg) {
+                                    push_undo(
+                                        &mut undo_history,
+                                        Snapshot::capture(&stack, &memo_map, degmode),
+                                    );
+                                    memo_map.remove(arg);
+                                }
+                                readline.add_history_entry(&input)?;
                                 update_log(&mut input_log, &mut message);
                                 update_memo(&memo_map, &mut memory);
                                 terminal.clear()?;
+                                continue;
                             }
                             _ => (),
                         }
                     }
-                    let pre_stack_length = &stack.len();
+                    let pre_stack_length = stack.len();
+                    let before = Snapshot::capture(&stack, &memo_map, degmode);
 
                     match manage_stack(
                         &input,
@@ -172,9 +196,10 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                             // 入力を履歴に追加
                             readline.add_history_entry(&input)?;
                             update_log(&mut input_log, &mut message);
-                            last_stackresult.push_back((stack.clone(), result.clone()));
-                            if last_stackresult.len() > 4 {
-                                last_stackresult.pop_front();
+                            // 状態が変化した場合のみ、操作前の状態をUndo履歴に積む
+                            // ('sto' 単体入力などモード変更だけの操作は積まない)
+                            if !before.is_same_as(&stack, &memo_map, degmode) {
+                                push_undo(&mut undo_history, before);
                             }
                         }
                         Err(e) => {
@@ -182,11 +207,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
                             input_log.pop_back();
                         }
                     }
-                    if pre_stack_length > &stack.len() {
+                    if pre_stack_length > stack.len() {
                         terminal.clear()?;
                     }
-                    result.clear();
-                    memory.clear();
                     update_stack(&stack, &mut result, decimal_point);
                     update_memo(&memo_map, &mut memory);
                 }
@@ -214,6 +237,56 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+const UNDO_LIMIT: usize = 20;
+
+// Undo用の状態スナップショット(操作前の状態を保存する)
+struct Snapshot {
+    stack: VecDeque<CalcNum>,
+    memo_map: BTreeMap<String, CalcNum>,
+    degmode: DegMode,
+}
+
+impl Snapshot {
+    fn capture(
+        stack: &VecDeque<CalcNum>,
+        memo_map: &BTreeMap<String, CalcNum>,
+        degmode: DegMode,
+    ) -> Self {
+        Self {
+            stack: stack.clone(),
+            memo_map: memo_map.clone(),
+            degmode,
+        }
+    }
+
+    fn is_same_as(
+        &self,
+        stack: &VecDeque<CalcNum>,
+        memo_map: &BTreeMap<String, CalcNum>,
+        degmode: DegMode,
+    ) -> bool {
+        self.stack == *stack && self.memo_map == *memo_map && self.degmode == degmode
+    }
+
+    fn restore(
+        self,
+        stack: &mut VecDeque<CalcNum>,
+        memo_map: &mut BTreeMap<String, CalcNum>,
+        degmode: &mut DegMode,
+    ) {
+        *stack = self.stack;
+        *memo_map = self.memo_map;
+        *degmode = self.degmode;
+    }
+}
+
+fn push_undo(undo_history: &mut VecDeque<Snapshot>, snapshot: Snapshot) {
+    undo_history.push_back(snapshot);
+    if undo_history.len() > UNDO_LIMIT {
+        undo_history.pop_front();
+    }
+}
+
 fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
     if input_log.len() > 8 {
         input_log.pop_front();
@@ -225,10 +298,12 @@ fn update_log(input_log: &mut VecDeque<String>, message: &mut String) {
 }
 
 fn update_memo(memo_map: &BTreeMap<String, CalcNum>, memory: &mut String) {
-    // memo_mapをStringに変換しスペースで区切る
-    for (key, sval) in memo_map.iter() {
-        memory.push_str(&format!("{} -> {} ", key, sval.num_format(2)));
-    }
+    // memo_mapをStringに変換しスペースで区切る(毎回作り直す)
+    *memory = memo_map
+        .iter()
+        .map(|(key, sval)| format!("{} -> {}", key, sval.num_format(2)))
+        .collect::<Vec<_>>()
+        .join(" ");
 }
 
 fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: usize) {
@@ -241,7 +316,7 @@ fn update_stack(stack: &VecDeque<CalcNum>, result: &mut String, decimal_point: u
     *result = stack
         .iter()
         .rev()
-        .take(10)
+        .take(calcrpn::STACK_SIZE)
         .rev()
         .map(|x| x.num_format(decimal_point))
         .collect::<Vec<_>>()

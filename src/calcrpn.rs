@@ -137,7 +137,7 @@ impl Help for MonomialFunc {
     }
 }
 // 記憶領域の列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Memorize {
     Recall(Option<String>),
     Clear,
@@ -229,7 +229,7 @@ impl Help for OperateStack {
     }
 }
 // 角度モードの列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DegMode {
     Rad,
     Deg,
@@ -335,7 +335,7 @@ impl TvmItem {
         }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CalcNum {
     Number(f64),
     Complex(Complex<f64>),
@@ -585,47 +585,59 @@ impl CalcNum {
     }
 
     fn factorial(&self) -> Result<CalcNum, Box<dyn std::error::Error>> {
-        // 階乗計算
+        // 階乗計算 (f64 で表現できる 170! まで)
         if !self.is_integer() {
             return Err("Factorial is only supported for integer".into());
         }
-        match self {
-            CalcNum::Number(n) => {
-                let result = safe_product(1..=*n as u64)? as f64;
-                Ok(CalcNum::Number(result))
-            }
-            CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
+        let n = self.get_realnumber()?;
+        if n < 0.0 {
+            return Err("Factorial is only supported for n >= 0".into());
         }
+        if n > 170.0 {
+            return Err("over flow".into());
+        }
+        Ok(CalcNum::Number(product_range(1, n as u64)?))
+    }
+
+    // 順列・組み合わせの引数チェック。整数かつ 0 <= r <= n であること
+    fn n_r_args(&self, r: &Self, name: &str) -> Result<(u64, u64), Box<dyn std::error::Error>> {
+        if !self.is_integer() || !r.is_integer() {
+            return Err(format!("{name} is only supported for integer").into());
+        }
+        let (n, r) = (self.get_realnumber()?, r.get_realnumber()?);
+        if n < 0.0 || r < 0.0 || r > n {
+            return Err(format!("{name} requires 0 <= r <= n").into());
+        }
+        // f64 で整数を正確に表せる上限 (2^53) を超える n は扱わない
+        if n > 9_007_199_254_740_992.0 {
+            return Err(format!("{name}: n is too large").into());
+        }
+        Ok((n as u64, r as u64))
     }
 
     fn permutation(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
-        // 順列計算
-        if !self.is_integer() || !r.is_integer() {
-            return Err("Permutation is only supported for integer".into());
+        // 順列計算 nPr = n * (n-1) * ... * (n-r+1)
+        let (n, r) = self.n_r_args(r, "Permutation")?;
+        if r == 0 {
+            return Ok(CalcNum::Number(1.0));
         }
-        match self {
-            CalcNum::Number(n) => {
-                let start = n - r.get_realnumber()? + 1.0;
-                let result = safe_product(start as u64..=*n as u64)? as f64;
-                Ok(CalcNum::Number(result))
-            }
-            CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
-        }
+        Ok(CalcNum::Number(product_range(n - r + 1, n)?))
     }
 
     fn combination(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
         // 組み合わせ計算
-        if !self.is_integer() || !r.is_integer() {
-            return Err("Combination is only supported for integer".into());
-        }
-        match self {
-            CalcNum::Number(_n) => {
-                let result1 = self.permutation(r)?.get_realnumber()?;
-                let result2 = safe_product(1..=r.get_realnumber()? as u64)? as f64;
-                Ok(CalcNum::Number(result1 / result2))
+        // nCr = Π_{k=1..r} (n-r+k)/k を逐次計算する。途中の値は常に C(n-r+k, k) で
+        // 整数になるため、階乗同士の割り算と違い中間値が膨らまずに済む
+        let (n, r) = self.n_r_args(r, "Combination")?;
+        let r = r.min(n - r);
+        let mut acc = 1.0_f64;
+        for k in 1..=r {
+            acc = acc * (n - r + k) as f64 / k as f64;
+            if acc.is_infinite() {
+                return Err("over flow".into());
             }
-            CalcNum::Complex(_n) => Err("Complex number is not supported".into()),
         }
+        Ok(CalcNum::Number(acc.round()))
     }
 
     fn abs(&self) -> CalcNum {
@@ -639,7 +651,40 @@ impl CalcNum {
 pub const STACK_SIZE: usize = 12;
 
 // スタックの管理関数
+// 途中でエラーになっても状態が壊れないよう、作業用コピーで計算して成功時のみ反映する
 pub fn manage_stack(
+    expression: &str,
+    calstack: &mut VecDeque<CalcNum>,
+    degmode: &mut DegMode,
+    memory_map: &mut BTreeMap<String, CalcNum>,
+    memo_mode: &mut Option<Memorize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut work_stack = calstack.clone();
+    let mut work_degmode = *degmode;
+    let mut work_memory = memory_map.clone();
+    let mut work_memo_mode = memo_mode.clone();
+
+    apply_expression(
+        expression,
+        &mut work_stack,
+        &mut work_degmode,
+        &mut work_memory,
+        &mut work_memo_mode,
+    )?;
+
+    // スタックが上限を超えた場合、古い要素(先頭)から削除
+    while work_stack.len() > STACK_SIZE {
+        work_stack.pop_front();
+    }
+
+    *calstack = work_stack;
+    *degmode = work_degmode;
+    *memory_map = work_memory;
+    *memo_mode = work_memo_mode;
+    Ok(())
+}
+
+fn apply_expression(
     expression: &str,
     calstack: &mut VecDeque<CalcNum>,
     degmode: &mut DegMode,
@@ -704,44 +749,20 @@ pub fn manage_stack(
             }
             Memorize::Tvm(key) => {
                 if let Some(inkey) = key {
-                    match inkey.as_str() {
-                        "n" => match TvmItem::n_value(memory_map) {
-                            Some(value) => {
-                                calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("n".to_string(), CalcNum::Number(value));
-                            }
-                            None => return Err("n_value Error"),
-                        },
-                        "iyr" => match TvmItem::i_year_rate(memory_map) {
-                            Some(value) => {
-                                calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("iyr".to_string(), CalcNum::Number(value));
-                            }
-                            None => return Err("i_year Error"),
-                        },
-                        "pv" => match TvmItem::present_value(memory_map) {
-                            Some(value) => {
-                                calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("pv".to_string(), CalcNum::Number(value));
-                            }
-                            None => return Err("pv Error"),
-                        },
-                        "pmt" => match TvmItem::payment(memory_map) {
-                            Some(value) => {
-                                calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("pmt".to_string(), CalcNum::Number(value));
-                            }
-                            None => return Err("pmt Error"),
-                        },
-                        "fv" => match TvmItem::future_value(memory_map) {
-                            Some(value) => {
-                                calstack.push_back(CalcNum::Number(value));
-                                memory_map.insert("fv".to_string(), CalcNum::Number(value));
-                            }
-                            None => return Err("fv Error"),
-                        },
+                    let value = match inkey.as_str() {
+                        "n" => TvmItem::n_value(memory_map).ok_or("n_value Error")?,
+                        "iyr" => TvmItem::i_year_rate(memory_map).ok_or("i_year Error")?,
+                        "pv" => TvmItem::present_value(memory_map).ok_or("pv Error")?,
+                        "pmt" => TvmItem::payment(memory_map).ok_or("pmt Error")?,
+                        "fv" => TvmItem::future_value(memory_map).ok_or("fv Error")?,
                         _ => return Err("Tvm Error"),
+                    };
+                    // 0除算や対数の定義域外で NaN / inf になった場合は解なし
+                    if !value.is_finite() {
+                        return Err("Tvm: no solution");
                     }
+                    calstack.push_back(CalcNum::Number(value));
+                    memory_map.insert(inkey, CalcNum::Number(value));
                 }
             }
         }
@@ -913,10 +934,6 @@ pub fn manage_stack(
             }
         }
     }
-    // スタックが一定以上になった場合、先頭の要素を削除
-    if calstack.len() >= STACK_SIZE {
-        calstack.pop_front();
-    };
     Ok(())
 }
 
@@ -1036,9 +1053,26 @@ fn safe_product(iter: impl IntoIterator<Item = u64>) -> Result<u64, &'static str
         .try_fold(1u64, |acc, x| acc.checked_mul(x).ok_or("over flow"))
 }
 
+// start..=end の積 (start >= 1 を前提とする)
+// u64 に収まる範囲は整数で正確に計算し、溢れたら f64 で近似計算する
+fn product_range(start: u64, end: u64) -> Result<f64, &'static str> {
+    if let Ok(v) = safe_product(start..=end) {
+        return Ok(v as f64);
+    }
+    let mut acc = 1.0_f64;
+    for x in start..=end {
+        acc *= x as f64;
+        if acc.is_infinite() {
+            return Err("over flow");
+        }
+    }
+    Ok(acc)
+}
+
 #[cfg(test)]
 mod tests {
 
+    use crate::calcrpn::STACK_SIZE;
     use crate::{CalcNum, DegMode, manage_stack};
     use core::f64;
     use std::collections::{BTreeMap, VecDeque};
@@ -1092,12 +1126,12 @@ mod tests {
         assert_eq!(realnumtest("10.0 ln"), f64::consts::LN_10);
         assert_eq!(realnumtest("100.0 log"), 2.0);
         assert_eq!(realnumtest("9.0 3 3 5 sum"), 20.0);
-        assert!((realnumtest("pi 6 / sin") - 0.5) < 1e-10);
-        assert!((realnumtest("pi 3 / cos") - 0.5) < 1e-10);
-        assert!((realnumtest("pi 4 / tan") - 1.0) < 1e-10);
-        assert!((realnumtest("0.5 asin") - f64::consts::PI / 6.0) < 1e-10);
-        assert!((realnumtest("0.5 acos") - f64::consts::PI / 3.0) < 1e-10);
-        assert!((realnumtest("1.0 atan") - f64::consts::PI / 4.0) < 1e-10);
+        assert!((realnumtest("pi 6 / sin") - 0.5).abs() < 1e-10);
+        assert!((realnumtest("pi 3 / cos") - 0.5).abs() < 1e-10);
+        assert!((realnumtest("pi 4 / tan") - 1.0).abs() < 1e-10);
+        assert!((realnumtest("0.5 asin") - f64::consts::PI / 6.0).abs() < 1e-10);
+        assert!((realnumtest("0.5 acos") - f64::consts::PI / 3.0).abs() < 1e-10);
+        assert!((realnumtest("1.0 atan") - f64::consts::PI / 4.0).abs() < 1e-10);
         assert_eq!(realnumtest("pi"), f64::consts::PI);
         assert_eq!(realnumtest("e"), f64::consts::E);
         assert!((realnumtest("60 torad") - f64::consts::PI / 3.0).abs() < 1e-10);
@@ -1144,5 +1178,80 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn error_keeps_state_unchanged() {
+        // 途中でエラーになった場合、スタック・メモリ・モードは入力前のまま
+        let mut stack = VecDeque::from([CalcNum::Number(10.0)]);
+        let mut memory = BTreeMap::new();
+        let mut degmode = DegMode::Rad;
+        let mut memomode = None;
+
+        let result = manage_stack(
+            "1 2 + sto x rad deg unknown_key",
+            &mut stack,
+            &mut degmode,
+            &mut memory,
+            &mut memomode,
+        );
+        assert!(result.is_err());
+        assert_eq!(stack.len(), 1);
+        assert!(matches!(stack[0], CalcNum::Number(v) if v == 10.0));
+        assert!(memory.is_empty());
+        assert!(matches!(degmode, DegMode::Rad));
+    }
+
+    #[test]
+    fn factorial_permutation_combination() {
+        let num = |v: f64| CalcNum::Number(v);
+        let real = |r: Result<CalcNum, Box<dyn std::error::Error>>| match r.unwrap() {
+            CalcNum::Number(v) => v,
+            CalcNum::Complex(_) => panic!("unexpected complex"),
+        };
+
+        // 境界値
+        assert_eq!(real(num(0.0).factorial()), 1.0);
+        assert_eq!(real(num(5.0).permutation(&num(0.0))), 1.0);
+        assert_eq!(real(num(5.0).combination(&num(0.0))), 1.0);
+        assert_eq!(real(num(5.0).combination(&num(5.0))), 1.0);
+        assert_eq!(real(num(10.0).combination(&num(7.0))), 120.0);
+
+        // u64 では溢れるが f64 で表現できる値 (以前は over flow エラー)
+        assert_eq!(real(num(52.0).combination(&num(5.0))), 2_598_960.0);
+        let c60_30 = real(num(60.0).combination(&num(30.0)));
+        assert!((c60_30 / 1.182_645_815_648_614_2e17 - 1.0).abs() < 1e-12);
+        let p25_25 = real(num(25.0).permutation(&num(25.0)));
+        let f25 = real(num(25.0).factorial());
+        assert!((p25_25 / f25 - 1.0).abs() < 1e-12);
+        assert!(num(170.0).factorial().is_ok());
+
+        // エラーになるべきケース
+        assert!(num(171.0).factorial().is_err());
+        assert!(num(-1.0).factorial().is_err());
+        assert!(num(2.5).factorial().is_err());
+        assert!(num(3.0).combination(&num(5.0)).is_err());
+        assert!(num(5.0).permutation(&num(-1.0)).is_err());
+        assert!(num(2000.0).combination(&num(1000.0)).is_err());
+    }
+
+    #[test]
+    fn stack_is_limited_to_stack_size() {
+        let mut stack = VecDeque::new();
+        let mut memory = BTreeMap::new();
+        let mut memomode = None;
+        let input = (1..=20).map(|n| n.to_string()).collect::<Vec<_>>().join(" ");
+
+        manage_stack(
+            &input,
+            &mut stack,
+            &mut DegMode::Rad,
+            &mut memory,
+            &mut memomode,
+        )
+        .unwrap();
+        assert_eq!(stack.len(), STACK_SIZE);
+        // 古いものから削除され、最新の 20 が末尾に残る
+        assert!(matches!(stack.back(), Some(CalcNum::Number(v)) if *v == 20.0));
     }
 }
