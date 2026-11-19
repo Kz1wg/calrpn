@@ -1,15 +1,14 @@
+use crate::commands;
 use crate::finance;
-use core::f64;
 use num::complex::Complex;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
+use std::f64::consts;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
-use std::vec;
-trait Help {
-    fn help(&self) -> &str;
-    fn show_help() -> String;
-}
+
+type CalcResult<T> = Result<T, Box<dyn std::error::Error>>;
+
 // 演算時要素の列挙型
 #[derive(Debug)]
 pub enum Expr {
@@ -20,8 +19,9 @@ pub enum Expr {
     Opstack(OperateStack),
     Memo(Memorize),
 }
+
 // 二項演算の列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinomialFunc {
     Add,
     Subtract,
@@ -32,51 +32,9 @@ pub enum BinomialFunc {
     NCr,
     NPr,
 }
-pub fn print_help() {
-    let allhelp = vec![
-        BinomialFunc::show_help(),
-        MonomialFunc::show_help(),
-        Constant::show_help(),
-        OperateStack::show_help(),
-        DegMode::show_help(),
-        Memorize::show_help(),
-    ];
-    println!("calrpn");
-    for help in allhelp {
-        println!("{help}");
-    }
-}
-impl Help for BinomialFunc {
-    fn help(&self) -> &str {
-        match self {
-            BinomialFunc::Add => "1 2 + -> 1 + 2",
-            BinomialFunc::Subtract => "1 2 - -> 1 - 2",
-            BinomialFunc::Multiply => "1 2 * -> 1 * 2",
-            BinomialFunc::Divide => "1 2 / -> 1 / 2",
-            BinomialFunc::Mod => "1 2 % -> 1 % 2",
-            BinomialFunc::Pow => "3 2 ^ -> 3 ^ 2",
-            BinomialFunc::NCr => "ncr: 10 2 ncr -> 10 nCr 2",
-            BinomialFunc::NPr => "npr: 10 2 npr -> 10 nPr 2",
-        }
-    }
-    fn show_help() -> String {
-        [
-            BinomialFunc::Add,
-            BinomialFunc::Subtract,
-            BinomialFunc::Multiply,
-            BinomialFunc::Divide,
-            BinomialFunc::Mod,
-            BinomialFunc::Pow,
-            BinomialFunc::NCr,
-            BinomialFunc::NPr,
-        ]
-        .map(|x| x.help().to_string())
-        .join("\n")
-    }
-}
 
 // 単項演算の列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MonomialFunc {
     Sqrt,
     Log,
@@ -94,49 +52,9 @@ pub enum MonomialFunc {
     ToPolar,
     ToRec,
 }
-impl Help for MonomialFunc {
-    fn help(&self) -> &str {
-        match self {
-            MonomialFunc::Sqrt => "sqrt: 30 sqrt -> sqrt(30)",
-            MonomialFunc::Log => "log: 30 log -> log10(30)",
-            MonomialFunc::Ln => "ln: 30 ln -> ln(30)",
-            MonomialFunc::Sin => "sin: 30 sin -> sin(30)",
-            MonomialFunc::Cos => "cos: 30 cos -> cos(30)",
-            MonomialFunc::Tan => "tan: 30 tan -> tan(30)",
-            MonomialFunc::ASin => "asin: 30 asin -> asin(30)",
-            MonomialFunc::ACos => "acos: 30 acos -> acos(30)",
-            MonomialFunc::ATan => "atan: 30 atan -> atan(30)",
-            MonomialFunc::ToDeg => "todeg: pi todeg -> pi to degrees",
-            MonomialFunc::ToRad => "torad: 30 torad -> 30 to radians",
-            MonomialFunc::Abs => "abs: 10+30i abs -> abs(10+30i)",
-            MonomialFunc::Factorial => "n! or ! : 10 ! -> factorial(10)",
-            MonomialFunc::ToPolar => "topolar: 30+2i topolar -> 30+2i to polar",
-            MonomialFunc::ToRec => "torec: 30+45i torec -> 30+45i to rectangular",
-        }
-    }
-    fn show_help() -> String {
-        [
-            MonomialFunc::Sqrt,
-            MonomialFunc::Log,
-            MonomialFunc::Ln,
-            MonomialFunc::Sin,
-            MonomialFunc::Cos,
-            MonomialFunc::Tan,
-            MonomialFunc::ASin,
-            MonomialFunc::ACos,
-            MonomialFunc::ATan,
-            MonomialFunc::ToDeg,
-            MonomialFunc::ToRad,
-            MonomialFunc::Abs,
-            MonomialFunc::Factorial,
-            MonomialFunc::ToPolar,
-            MonomialFunc::ToRec,
-        ]
-        .map(|x| x.help().to_string())
-        .join("\n")
-    }
-}
+
 // 記憶領域の列挙型
+// キーが None のものは「キー待ち」状態を表し、次のトークンをキーとして受け取る
 #[derive(Debug, Clone)]
 pub enum Memorize {
     Recall(Option<String>),
@@ -145,51 +63,37 @@ pub enum Memorize {
     Store(Option<String>),
     Tvm(Option<String>),
 }
-impl Help for Memorize {
-    fn help(&self) -> &str {
-        match self {
-            Memorize::Recall(_) => "rcl : recall memory",
-            Memorize::Clear => "mc : clear memory",
-            Memorize::Delete(_) => "mdel : delete memory",
-            Memorize::Store(_) => "sto : store memory",
-            Memorize::Tvm(_) => {
-                "tvm : calculate time value [n,iyr,pv,pmt,fv] // to memo -> tn,tiyr,tpv,tpmt,tfv"
-            }
-        }
-    }
-    fn show_help() -> String {
-        [
-            Memorize::Recall(None),
-            Memorize::Clear,
-            Memorize::Store(None),
-            Memorize::Tvm(None),
-        ]
-        .map(|x| x.help().to_string())
-        .join("\n")
+
+impl Memorize {
+    fn is_waiting_key(&self) -> bool {
+        matches!(
+            self,
+            Memorize::Recall(None)
+                | Memorize::Store(None)
+                | Memorize::Delete(None)
+                | Memorize::Tvm(None)
+        )
     }
 }
+
 // 定数の列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Constant {
     Pi,
     E,
 }
-impl Help for Constant {
-    fn help(&self) -> &str {
+
+impl Constant {
+    fn value(self) -> CalcNum {
         match self {
-            Constant::Pi => "pi : 3.14159265358979323846",
-            Constant::E => "e : 2.71828182845904523536",
+            Constant::Pi => CalcNum::Number(consts::PI),
+            Constant::E => CalcNum::Number(consts::E),
         }
-    }
-    fn show_help() -> String {
-        [Constant::Pi, Constant::E]
-            .map(|x| x.help().to_string())
-            .join("\n")
     }
 }
 
 // Stack & Mode操作の列挙型
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OperateStack {
     Swap,
     Clear,
@@ -200,141 +104,19 @@ pub enum OperateStack {
     Deg,
     Rad,
 }
-impl Help for OperateStack {
-    fn help(&self) -> &str {
-        match self {
-            OperateStack::Swap => "sw : swap top two stack",
-            OperateStack::Clear => "cl : clear stack",
-            OperateStack::Delete => "dl : delete top stack",
-            OperateStack::RollUp => "rup : roll up stack",
-            OperateStack::RollDown => "rdn : roll down stack",
-            OperateStack::Sum => "sum : sum all stack",
-            OperateStack::Deg => "deg : set degree mode",
-            OperateStack::Rad => "rad : set radian mode",
-        }
-    }
-    fn show_help() -> String {
-        [
-            OperateStack::Swap,
-            OperateStack::Clear,
-            OperateStack::Delete,
-            OperateStack::RollUp,
-            OperateStack::RollDown,
-            OperateStack::Sum,
-            OperateStack::Deg,
-            OperateStack::Rad,
-        ]
-        .map(|x| x.help().to_string())
-        .join("\n")
-    }
-}
+
 // 角度モードの列挙型
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DegMode {
     Rad,
     Deg,
 }
-impl Help for DegMode {
-    fn help(&self) -> &str {
-        match self {
-            DegMode::Rad => "Rad : Radian Mode",
-            DegMode::Deg => "Deg : Degree Mode",
-        }
-    }
-    fn show_help() -> String {
-        [DegMode::Rad, DegMode::Deg]
-            .map(|x| x.help().to_string())
-            .join("\n")
-    }
-}
-#[derive(Debug, Clone)]
-pub enum TvmItem {
-    Value(f64),
-    None,
-}
-impl TvmItem {
-    fn get_items(memory_map: &BTreeMap<String, CalcNum>, key: &str) -> Self {
-        match memory_map.get(key) {
-            Some(num) => match num.get_realnumber() {
-                Ok(n) => match key {
-                    "n" => Self::Value(n),
-                    "iyr" => Self::Value(n),
-                    "pv" => Self::Value(n),
-                    "pmt" => Self::Value(n),
-                    "fv" => Self::Value(n),
-                    _ => Self::None,
-                },
-                Err(_) => Self::None,
-            },
-            None => Self::None,
-        }
-    }
 
-    fn get_value(memory_map: &BTreeMap<String, CalcNum>, key: &str) -> Option<f64> {
-        match Self::get_items(memory_map, key) {
-            Self::Value(n) => Some(n),
-            Self::None => None,
-        }
-    }
-    fn n_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
-        let iyr = Self::get_value(memory_map, "iyr");
-        let pv = Self::get_value(memory_map, "pv");
-        let pmt = Self::get_value(memory_map, "pmt");
-        let fv = Self::get_value(memory_map, "fv");
-        match (iyr, pv, pmt, fv) {
-            (Some(iyr), Some(pv), Some(pmt), Some(fv)) => {
-                Some(finance::number_of_periods(iyr, pv, pmt, fv))
-            }
-            (_, _, _, _) => None,
-        }
-    }
-    fn payment(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
-        let iyr = Self::get_value(memory_map, "iyr");
-        let pv = Self::get_value(memory_map, "pv");
-        let n = Self::get_value(memory_map, "n");
-        let fv = Self::get_value(memory_map, "fv");
-        match (iyr, pv, n, fv) {
-            (Some(iyr), Some(pv), Some(n), Some(fv)) => Some(finance::payment(n, iyr, pv, fv)),
-            (_, _, _, _) => None,
-        }
-    }
-    fn present_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
-        let iyr = Self::get_value(memory_map, "iyr");
-        let pmt = Self::get_value(memory_map, "pmt");
-        let n = Self::get_value(memory_map, "n");
-        let fv = Self::get_value(memory_map, "fv");
-        match (iyr, pmt, n, fv) {
-            (Some(iyr), Some(pmt), Some(n), Some(fv)) => {
-                Some(finance::present_value(n, iyr, pmt, fv))
-            }
-            (_, _, _, _) => None,
-        }
-    }
-
-    fn i_year_rate(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
-        let pv = Self::get_value(memory_map, "pv");
-        let pmt = Self::get_value(memory_map, "pmt");
-        let n = Self::get_value(memory_map, "n");
-        let fv = Self::get_value(memory_map, "fv");
-        match (pv, pmt, n, fv) {
-            (Some(pv), Some(pmt), Some(n), Some(fv)) => finance::i_yr(n, pv, pmt, fv),
-            (_, _, _, _) => None,
-        }
-    }
-
-    fn future_value(memory_map: &BTreeMap<String, CalcNum>) -> Option<f64> {
-        let iyr = Self::get_value(memory_map, "iyr");
-        let pmt = Self::get_value(memory_map, "pmt");
-        let n = Self::get_value(memory_map, "n");
-        let pv = Self::get_value(memory_map, "pv");
-        match (iyr, pmt, n, pv) {
-            (Some(iyr), Some(pmt), Some(n), Some(pv)) => {
-                Some(finance::future_value(n, iyr, pv, pmt))
-            }
-            (_, _, _, _) => None,
-        }
-    }
+pub fn print_help() {
+    println!("calrpn");
+    println!("{}", commands::help_text());
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CalcNum {
     Number(f64),
@@ -430,11 +212,6 @@ impl CalcNum {
         }
     }
 
-    fn is_realnumber(&self) -> bool {
-        // 実数チェック
-        matches!(self, CalcNum::Number(_))
-    }
-
     fn is_integer(&self) -> bool {
         // 整数チェック
         match self {
@@ -443,7 +220,7 @@ impl CalcNum {
         }
     }
 
-    fn get_realnumber(&self) -> Result<f64, Box<dyn std::error::Error>> {
+    fn get_realnumber(&self) -> CalcResult<f64> {
         match self {
             CalcNum::Number(val) => Ok(*val),
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
@@ -540,7 +317,7 @@ impl CalcNum {
         }
     }
 
-    fn to_polar(&self, degmode: &DegMode) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn to_polar(&self, degmode: &DegMode) -> CalcResult<CalcNum> {
         // 極座標変換
         match self {
             CalcNum::Number(_val) => Err("Invalid Type".into()),
@@ -557,7 +334,7 @@ impl CalcNum {
             }
         }
     }
-    fn to_rectangular(&self, degmode: &DegMode) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn to_rectangular(&self, degmode: &DegMode) -> CalcResult<CalcNum> {
         match self {
             CalcNum::Complex(polardata) => {
                 let theta = match degmode {
@@ -570,21 +347,21 @@ impl CalcNum {
         }
     }
 
-    fn to_deg(&self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn to_deg(&self) -> CalcResult<CalcNum> {
         match self {
             CalcNum::Number(val) => Ok(CalcNum::Number(val.to_degrees())),
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
 
-    fn to_rad(&self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn to_rad(&self) -> CalcResult<CalcNum> {
         match self {
             CalcNum::Number(val) => Ok(CalcNum::Number(val.to_radians())),
             CalcNum::Complex(_val) => Err("Complex number is not supported".into()),
         }
     }
 
-    fn factorial(&self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn factorial(&self) -> CalcResult<CalcNum> {
         // 階乗計算 (f64 で表現できる 170! まで)
         if !self.is_integer() {
             return Err("Factorial is only supported for integer".into());
@@ -600,7 +377,7 @@ impl CalcNum {
     }
 
     // 順列・組み合わせの引数チェック。整数かつ 0 <= r <= n であること
-    fn n_r_args(&self, r: &Self, name: &str) -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    fn n_r_args(&self, r: &Self, name: &str) -> CalcResult<(u64, u64)> {
         if !self.is_integer() || !r.is_integer() {
             return Err(format!("{name} is only supported for integer").into());
         }
@@ -615,7 +392,7 @@ impl CalcNum {
         Ok((n as u64, r as u64))
     }
 
-    fn permutation(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn permutation(&self, r: &Self) -> CalcResult<CalcNum> {
         // 順列計算 nPr = n * (n-1) * ... * (n-r+1)
         let (n, r) = self.n_r_args(r, "Permutation")?;
         if r == 0 {
@@ -624,7 +401,7 @@ impl CalcNum {
         Ok(CalcNum::Number(product_range(n - r + 1, n)?))
     }
 
-    fn combination(&self, r: &Self) -> Result<CalcNum, Box<dyn std::error::Error>> {
+    fn combination(&self, r: &Self) -> CalcResult<CalcNum> {
         // 組み合わせ計算
         // nCr = Π_{k=1..r} (n-r+k)/k を逐次計算する。途中の値は常に C(n-r+k, k) で
         // 整数になるため、階乗同士の割り算と違い中間値が膨らまずに済む
@@ -658,7 +435,7 @@ pub fn manage_stack(
     degmode: &mut DegMode,
     memory_map: &mut BTreeMap<String, CalcNum>,
     memo_mode: &mut Option<Memorize>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> CalcResult<()> {
     let mut work_stack = calstack.clone();
     let mut work_degmode = *degmode;
     let mut work_memory = memory_map.clone();
@@ -684,368 +461,249 @@ pub fn manage_stack(
     Ok(())
 }
 
+// 式を評価してスタックを更新する
+// エラー時に途中状態が残ってもよい (manage_stack が作業用コピーを破棄するため)
 fn apply_expression(
     expression: &str,
     calstack: &mut VecDeque<CalcNum>,
     degmode: &mut DegMode,
     memory_map: &mut BTreeMap<String, CalcNum>,
     memo_mode: &mut Option<Memorize>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // 式を分割するクロージャ
-    let separate_exp = |x: &str| match x.chars().last() {
-        Some(c) => match c {
-            '+' | '-' | '*' | '/' | '^' => {
-                if x.len() > 1 {
-                    let (head, tail) = x.split_at(x.len() - 1);
-                    vec![head.to_string(), tail.to_string()]
-                } else {
-                    vec![x.to_string()]
-                }
-            }
-            _ => vec![x.to_string()],
-        },
-        None => vec![],
-    };
-
-    // 入力された式を空白で分割し、それぞれの要素をparse_exp関数で処理
-    let items = expression
-        .split_whitespace()
-        .flat_map(separate_exp)
-        .map(|arg: String| parse_exp(&arg, memo_mode))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // --各機能を担うクロージャ群--
-    // 記憶関連の処理
-    let mut manage_memorize = |memo: Memorize, calstack: &mut VecDeque<CalcNum>| {
-        match memo {
-            Memorize::Recall(key) => {
-                if let Some(inkey) = key {
-                    if let Some(val) = memory_map.get(&inkey) {
-                        calstack.push_back(val.clone());
-                    } else {
-                        return Err("No Key");
-                    }
-                }
-            }
-            Memorize::Clear => {
-                memory_map.clear();
-            }
-            Memorize::Delete(key) => {
-                if let Some(inkey) = key
-                    && let Some(_get) = memory_map.get(&inkey)
-                {
-                    memory_map.remove(&inkey);
-                }
-            }
-            Memorize::Store(key) => {
-                if let Some(inkey) = key {
-                    if let Some(val) = calstack.pop_back() {
-                        memory_map.insert(inkey, val.clone());
-                        calstack.push_back(val);
-                    } else {
-                        return Err("Stack is Empty");
-                    }
-                }
-            }
-            Memorize::Tvm(key) => {
-                if let Some(inkey) = key {
-                    let value = match inkey.as_str() {
-                        "n" => TvmItem::n_value(memory_map).ok_or("n_value Error")?,
-                        "iyr" => TvmItem::i_year_rate(memory_map).ok_or("i_year Error")?,
-                        "pv" => TvmItem::present_value(memory_map).ok_or("pv Error")?,
-                        "pmt" => TvmItem::payment(memory_map).ok_or("pmt Error")?,
-                        "fv" => TvmItem::future_value(memory_map).ok_or("fv Error")?,
-                        _ => return Err("Tvm Error"),
-                    };
-                    // 0除算や対数の定義域外で NaN / inf になった場合は解なし
-                    if !value.is_finite() {
-                        return Err("Tvm: no solution");
-                    }
-                    calstack.push_back(CalcNum::Number(value));
-                    memory_map.insert(inkey, CalcNum::Number(value));
-                }
-            }
+) -> CalcResult<()> {
+    // 空入力で最後尾のアイテムをコピー HP電卓の ENTER と同様
+    if expression.trim().is_empty() {
+        if let Some(top) = calstack.back().cloned() {
+            calstack.push_back(top);
         }
-        Ok(())
-    };
+        return Ok(());
+    }
 
-    // 二項演算の処理
-    let manage_binomial = |b_func: BinomialFunc, calstack: &mut VecDeque<CalcNum>| {
-        let (exex, ex) = get_two_item(calstack)?;
-        let result = match b_func {
-            BinomialFunc::Add => exex + ex,
-            BinomialFunc::Subtract => exex - ex,
-            BinomialFunc::Multiply => exex * ex,
-            BinomialFunc::Divide => exex / ex,
-            BinomialFunc::Mod => exex % ex,
-            BinomialFunc::Pow => exex.pow(&ex),
-            BinomialFunc::NPr => match exex.permutation(&ex) {
-                Ok(result) => result,
-                Err(e) => {
-                    calstack.push_back(exex);
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-            BinomialFunc::NCr => match exex.combination(&ex) {
-                Ok(result) => result,
-                Err(e) => {
-                    calstack.push_back(exex);
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-        };
-        calstack.push_back(result);
-        Ok(())
-    };
+    // 先に全トークンを解釈してから順に実行する
+    let items: Vec<Expr> = expression
+        .split_whitespace()
+        .flat_map(split_trailing_operator)
+        .map(|token| parse_exp(&token, memo_mode))
+        .collect();
 
-    // 単項演算の処理
-    let manage_monomial = |m_func, calstack: &mut VecDeque<CalcNum>, degmode: &mut DegMode| {
-        let ex = get_one_item(calstack)?;
-        let result = match m_func {
-            MonomialFunc::Sqrt => ex.sqrt(),
-            MonomialFunc::Log => ex.log10(),
-            MonomialFunc::Ln => ex.ln(),
-            MonomialFunc::Sin => ex.sin(degmode),
-            MonomialFunc::Cos => ex.cos(degmode),
-            MonomialFunc::Tan => ex.tan(degmode),
-            MonomialFunc::ASin => ex.asin(degmode),
-            MonomialFunc::ACos => ex.acos(degmode),
-            MonomialFunc::ATan => ex.atan(degmode),
-            MonomialFunc::ToDeg => match ex.to_deg() {
-                Ok(deg) => deg,
-                Err(e) => {
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-            MonomialFunc::ToRad => match ex.to_rad() {
-                Ok(rad) => rad,
-                Err(e) => {
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-            MonomialFunc::Factorial => match ex.factorial() {
-                Ok(result) => result,
-                Err(e) => {
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-            MonomialFunc::Abs => ex.abs(),
-            MonomialFunc::ToPolar => match ex.to_polar(degmode) {
-                Ok(polardata) => polardata,
-                Err(e) => {
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-            MonomialFunc::ToRec => match ex.to_rectangular(degmode) {
-                Ok(result) => result,
-                Err(e) => {
-                    calstack.push_back(ex);
-                    return Err(e);
-                }
-            },
-        };
-        calstack.push_back(result);
-        Ok(())
-    };
-
-    // スタック操作・演算の処理
-    let manage_operate_stack =
-        |operate, calstack: &mut VecDeque<CalcNum>, degmode: &mut DegMode| {
-            match operate {
-                OperateStack::Swap => {
-                    if calstack.len() < 2 {
-                        return Err("Stack is too short");
-                    } else {
-                        let last = calstack.len() - 1;
-                        calstack.swap(last, last - 1);
-                    }
-                }
-                OperateStack::Clear => calstack.clear(),
-                OperateStack::Delete => {
-                    if calstack.is_empty() {
-                        return Err("Stack is Empty");
-                    } else {
-                        calstack.pop_back();
-                    }
-                }
-                OperateStack::RollUp => {
-                    if calstack.len() < 2 {
-                        return Err("Stack is too short");
-                    } else {
-                        let last = calstack.pop_back().unwrap();
-                        calstack.push_front(last);
-                    }
-                }
-                OperateStack::RollDown => {
-                    if calstack.len() < 2 {
-                        return Err("Stack is too short");
-                    } else {
-                        let first = calstack.pop_front().unwrap();
-                        calstack.push_back(first);
-                    }
-                }
-                OperateStack::Sum => {
-                    if calstack.iter().all(CalcNum::is_realnumber) {
-                        let sum_result = calstack.iter().map(|x| x.get_realnumber().unwrap()).sum();
-                        calstack.clear();
-                        calstack.push_back(CalcNum::Number(sum_result));
-                    } else {
-                        return Err("Invalid Data");
-                    }
-                }
-                OperateStack::Deg => *degmode = DegMode::Deg,
-                OperateStack::Rad => *degmode = DegMode::Rad,
-            }
-            Ok(())
-        };
-
-    // 定数の処理
-    let manage_constant = |consts, calstack: &mut VecDeque<CalcNum>| {
-        let result = match consts {
-            Constant::Pi => f64::consts::PI,
-            Constant::E => f64::consts::E,
-        };
-        calstack.push_back(CalcNum::Number(result));
-    };
-    // --各機能を担うクロージャ群-- 終わり
-
-    // 空入力で最後尾のアイテムをコピー HP電卓の挙動と同様
-    if expression.is_empty() && !calstack.is_empty() {
-        let copy_item = get_one_item(calstack)?;
-        calstack.push_back(copy_item.clone());
-        calstack.push_back(copy_item);
-    } else {
-        // 式の要素を順番に処理
-        for item in items {
-            // 式の要素に応じて処理を分岐
-            match item {
-                Expr::Memo(mem) => manage_memorize(mem, calstack)?,
-                Expr::Numbers(data) => calstack.push_back(data),
-                Expr::Binomial(b_func) => manage_binomial(b_func, calstack)?,
-                Expr::Monomial(m_func) => manage_monomial(m_func, calstack, degmode)?,
-                Expr::Opstack(operate) => manage_operate_stack(operate, calstack, degmode)?,
-                Expr::Const(consts) => manage_constant(consts, calstack),
-            }
+    for item in items {
+        match item {
+            Expr::Numbers(num) => calstack.push_back(num),
+            Expr::Const(c) => calstack.push_back(c.value()),
+            Expr::Binomial(f) => apply_binomial(f, calstack)?,
+            Expr::Monomial(f) => apply_monomial(f, calstack, *degmode)?,
+            Expr::Opstack(op) => apply_operate_stack(op, calstack, degmode)?,
+            Expr::Memo(memo) => apply_memorize(memo, calstack, memory_map)?,
         }
     }
     Ok(())
 }
 
-fn parse_exp(expression: &str, memo_mode: &mut Option<Memorize>) -> Result<Expr, String> {
-    match expression.to_lowercase().parse::<CalcNum>() {
-        Ok(data) => Ok(Expr::Numbers(data)),
-        Err(_) => match expression {
-            "+" => Ok(Expr::Binomial(BinomialFunc::Add)),
-            "-" => Ok(Expr::Binomial(BinomialFunc::Subtract)),
-            "*" => Ok(Expr::Binomial(BinomialFunc::Multiply)),
-            "/" => Ok(Expr::Binomial(BinomialFunc::Divide)),
-            "%" => Ok(Expr::Binomial(BinomialFunc::Mod)),
-            "cl" | "clear" => Ok(Expr::Opstack(OperateStack::Clear)),
-            "dl" | "del" | "delete" => Ok(Expr::Opstack(OperateStack::Delete)),
-            "mc" | "mcl" => Ok(Expr::Memo(Memorize::Clear)),
-            "rup" | "rollup" => Ok(Expr::Opstack(OperateStack::RollUp)),
-            "rdn" | "rolldown" => Ok(Expr::Opstack(OperateStack::RollDown)),
-            "sw" | "swap" => Ok(Expr::Opstack(OperateStack::Swap)),
-            "sin" => Ok(Expr::Monomial(MonomialFunc::Sin)),
-            "cos" => Ok(Expr::Monomial(MonomialFunc::Cos)),
-            "tan" => Ok(Expr::Monomial(MonomialFunc::Tan)),
-            "asin" => Ok(Expr::Monomial(MonomialFunc::ASin)),
-            "acos" => Ok(Expr::Monomial(MonomialFunc::ACos)),
-            "atan" => Ok(Expr::Monomial(MonomialFunc::ATan)),
-            "^" | "pow" => Ok(Expr::Binomial(BinomialFunc::Pow)),
-            "sqrt" => Ok(Expr::Monomial(MonomialFunc::Sqrt)),
-            "log" => Ok(Expr::Monomial(MonomialFunc::Log)),
-            "ln" => Ok(Expr::Monomial(MonomialFunc::Ln)),
-            "npr" | "perm" => Ok(Expr::Binomial(BinomialFunc::NPr)),
-            "ncr" | "comb" => Ok(Expr::Binomial(BinomialFunc::NCr)),
-            "torec" | "torect" | "rec" | "rect" => Ok(Expr::Monomial(MonomialFunc::ToRec)),
-            "topol" | "topolar" | "polar" | "pol" => Ok(Expr::Monomial(MonomialFunc::ToPolar)),
-            "n!" | "!" | "fact" | "factorial" => Ok(Expr::Monomial(MonomialFunc::Factorial)),
-            "pi" => Ok(Expr::Const(Constant::Pi)),
-            "e" => Ok(Expr::Const(Constant::E)),
-            "sum" => Ok(Expr::Opstack(OperateStack::Sum)),
-            "torad" => Ok(Expr::Monomial(MonomialFunc::ToRad)),
-            "todeg" => Ok(Expr::Monomial(MonomialFunc::ToDeg)),
-            "abs" => Ok(Expr::Monomial(MonomialFunc::Abs)),
-            "rad" => Ok(Expr::Opstack(OperateStack::Rad)),
-            "deg" => Ok(Expr::Opstack(OperateStack::Deg)),
-            "tn" => Ok(Expr::Memo(Memorize::Store(Some("n".to_string())))),
-            "tiyr" => Ok(Expr::Memo(Memorize::Store(Some("iyr".to_string())))),
-            "tpv" => Ok(Expr::Memo(Memorize::Store(Some("pv".to_string())))),
-            "tpmt" => Ok(Expr::Memo(Memorize::Store(Some("pmt".to_string())))),
-            "tfv" => Ok(Expr::Memo(Memorize::Store(Some("fv".to_string())))),
-            _ => match memo_mode {
-                Some(Memorize::Recall(None)) => {
-                    *memo_mode = None;
-                    Ok(Expr::Memo(Memorize::Recall(Some(expression.to_string()))))
-                }
-                Some(Memorize::Store(None)) => {
-                    *memo_mode = None;
-                    Ok(Expr::Memo(Memorize::Store(Some(expression.to_string()))))
-                }
-                Some(Memorize::Delete(None)) => {
-                    *memo_mode = None;
-                    Ok(Expr::Memo(Memorize::Delete(Some(expression.to_string()))))
-                }
-                Some(Memorize::Tvm(None)) => {
-                    *memo_mode = None;
-                    Ok(Expr::Memo(Memorize::Tvm(Some(expression.to_string()))))
-                }
-                _ => match expression.to_lowercase().as_str() {
-                    "rcl" => {
-                        *memo_mode = Some(Memorize::Recall(None));
-                        Ok(Expr::Memo(Memorize::Recall(None)))
-                    }
-                    "sto" | "to" => {
-                        *memo_mode = Some(Memorize::Store(None));
-                        Ok(Expr::Memo(Memorize::Store(None)))
-                    }
-                    "mc" | "mcl" => {
-                        *memo_mode = None;
-                        Ok(Expr::Memo(Memorize::Clear))
-                    }
-                    "mdel" | "mdl" => {
-                        *memo_mode = Some(Memorize::Delete(None));
-                        Ok(Expr::Memo(Memorize::Delete(None)))
-                    }
-                    "tvm" | "tv" => {
-                        *memo_mode = Some(Memorize::Tvm(None));
-                        Ok(Expr::Memo(Memorize::Tvm(None)))
-                    }
-                    _ => Ok(Expr::Memo(Memorize::Recall(Some(expression.to_string())))),
-                },
-            },
-        },
+// "3 2/" のように末尾に付いた演算子を分離する ("2/" -> "2", "/")
+fn split_trailing_operator(token: &str) -> Vec<String> {
+    match token.chars().last() {
+        Some('+' | '-' | '*' | '/' | '^') if token.len() > 1 => {
+            let (head, tail) = token.split_at(token.len() - 1);
+            vec![head.to_string(), tail.to_string()]
+        }
+        _ => vec![token.to_string()],
     }
 }
 
-// スタックから2つの要素を取り出す
-fn get_two_item(calstack: &mut VecDeque<CalcNum>) -> Result<(CalcNum, CalcNum), String> {
-    if calstack.len() < 2 {
+// トークンを演算要素に変換する
+// 優先順位: 数値 > コマンド表 > キー待ち中ならメモのキー > メモの呼び出し
+fn parse_exp(token: &str, memo_mode: &mut Option<Memorize>) -> Expr {
+    let lower = token.to_lowercase();
+    if let Ok(num) = lower.parse::<CalcNum>() {
+        return Expr::Numbers(num);
+    }
+
+    if let Some(command) = commands::find(&lower) {
+        let expr = command.action.to_expr();
+        // 'sto' 'rcl' などはキー待ちに入る
+        if let Expr::Memo(memo) = &expr
+            && memo.is_waiting_key()
+        {
+            *memo_mode = Some(memo.clone());
+        }
+        return expr;
+    }
+
+    // コマンドでなければメモのキーとして扱う (キーは大文字小文字を区別する)
+    let key = token.to_string();
+    Expr::Memo(match memo_mode.take() {
+        Some(Memorize::Store(None)) => Memorize::Store(Some(key)),
+        Some(Memorize::Delete(None)) => Memorize::Delete(Some(key)),
+        Some(Memorize::Tvm(None)) => Memorize::Tvm(Some(key)),
+        // Recall 待ち、またはキー待ちでなければ呼び出し
+        _ => Memorize::Recall(Some(key)),
+    })
+}
+
+// 二項演算: Y(2番目) と X(最上段) を取り出して結果を積む
+fn apply_binomial(func: BinomialFunc, calstack: &mut VecDeque<CalcNum>) -> CalcResult<()> {
+    let (y, x) = get_two_item(calstack)?;
+    let result = match func {
+        BinomialFunc::Add => y + x,
+        BinomialFunc::Subtract => y - x,
+        BinomialFunc::Multiply => y * x,
+        BinomialFunc::Divide => y / x,
+        BinomialFunc::Mod => y % x,
+        BinomialFunc::Pow => y.pow(&x),
+        BinomialFunc::NPr => y.permutation(&x)?,
+        BinomialFunc::NCr => y.combination(&x)?,
+    };
+    calstack.push_back(result);
+    Ok(())
+}
+
+// 単項演算: X を取り出して結果を積む
+fn apply_monomial(
+    func: MonomialFunc,
+    calstack: &mut VecDeque<CalcNum>,
+    degmode: DegMode,
+) -> CalcResult<()> {
+    let x = get_one_item(calstack)?;
+    let result = match func {
+        MonomialFunc::Sqrt => x.sqrt(),
+        MonomialFunc::Log => x.log10(),
+        MonomialFunc::Ln => x.ln(),
+        MonomialFunc::Sin => x.sin(&degmode),
+        MonomialFunc::Cos => x.cos(&degmode),
+        MonomialFunc::Tan => x.tan(&degmode),
+        MonomialFunc::ASin => x.asin(&degmode),
+        MonomialFunc::ACos => x.acos(&degmode),
+        MonomialFunc::ATan => x.atan(&degmode),
+        MonomialFunc::ToDeg => x.to_deg()?,
+        MonomialFunc::ToRad => x.to_rad()?,
+        MonomialFunc::Abs => x.abs(),
+        MonomialFunc::Factorial => x.factorial()?,
+        MonomialFunc::ToPolar => x.to_polar(&degmode)?,
+        MonomialFunc::ToRec => x.to_rectangular(&degmode)?,
+    };
+    calstack.push_back(result);
+    Ok(())
+}
+
+// スタック操作・モード切替
+fn apply_operate_stack(
+    op: OperateStack,
+    calstack: &mut VecDeque<CalcNum>,
+    degmode: &mut DegMode,
+) -> CalcResult<()> {
+    match op {
+        OperateStack::Swap => {
+            let len = require_len(calstack, 2)?;
+            calstack.swap(len - 1, len - 2);
+        }
+        OperateStack::Clear => calstack.clear(),
+        OperateStack::Delete => {
+            get_one_item(calstack)?;
+        }
+        OperateStack::RollUp => {
+            // 最上段を最下段へ
+            require_len(calstack, 2)?;
+            calstack.rotate_right(1);
+        }
+        OperateStack::RollDown => {
+            // 最下段を最上段へ
+            require_len(calstack, 2)?;
+            calstack.rotate_left(1);
+        }
+        OperateStack::Sum => {
+            let total = calstack
+                .iter()
+                .map(CalcNum::get_realnumber)
+                .sum::<CalcResult<f64>>()?;
+            calstack.clear();
+            calstack.push_back(CalcNum::Number(total));
+        }
+        OperateStack::Deg => *degmode = DegMode::Deg,
+        OperateStack::Rad => *degmode = DegMode::Rad,
+    }
+    Ok(())
+}
+
+// メモリ操作
+fn apply_memorize(
+    memo: Memorize,
+    calstack: &mut VecDeque<CalcNum>,
+    memory_map: &mut BTreeMap<String, CalcNum>,
+) -> CalcResult<()> {
+    match memo {
+        // キー待ちに入るだけ (キーは次のトークンで受け取る)
+        Memorize::Recall(None)
+        | Memorize::Store(None)
+        | Memorize::Delete(None)
+        | Memorize::Tvm(None) => {}
+        Memorize::Recall(Some(key)) => {
+            let val = memory_map
+                .get(&key)
+                .ok_or_else(|| format!("Unknown command or memo key: '{key}'"))?;
+            calstack.push_back(val.clone());
+        }
+        Memorize::Store(Some(key)) => {
+            let top = calstack.back().ok_or("Stack is Empty")?.clone();
+            memory_map.insert(key, top);
+        }
+        Memorize::Delete(Some(key)) => {
+            memory_map
+                .remove(&key)
+                .ok_or_else(|| format!("No memo key: '{key}'"))?;
+        }
+        Memorize::Clear => memory_map.clear(),
+        Memorize::Tvm(Some(key)) => {
+            let value = CalcNum::Number(solve_tvm(memory_map, &key)?);
+            calstack.push_back(value.clone());
+            memory_map.insert(key, value);
+        }
+    }
+    Ok(())
+}
+
+// TVM: target 以外の4つの値をメモリから取り出して target を求める
+fn solve_tvm(memory_map: &BTreeMap<String, CalcNum>, target: &str) -> Result<f64, String> {
+    let get = |key: &str| {
+        memory_map
+            .get(key)
+            .and_then(|v| v.get_realnumber().ok())
+            .ok_or(format!("tvm: '{key}' is not set"))
+    };
+    let value = match target {
+        "n" => finance::number_of_periods(get("iyr")?, get("pv")?, get("pmt")?, get("fv")?),
+        "iyr" => finance::i_yr(get("n")?, get("pv")?, get("pmt")?, get("fv")?)
+            .ok_or("tvm: no solution for iyr")?,
+        "pv" => finance::present_value(get("n")?, get("iyr")?, get("pmt")?, get("fv")?),
+        "pmt" => finance::payment(get("n")?, get("iyr")?, get("pv")?, get("fv")?),
+        "fv" => finance::future_value(get("n")?, get("iyr")?, get("pv")?, get("pmt")?),
+        _ => return Err(format!("tvm: unknown target '{target}' (n, iyr, pv, pmt, fv)")),
+    };
+    // 0除算や対数の定義域外で NaN / inf になった場合は解なし
+    if !value.is_finite() {
+        return Err(format!("tvm: no solution for {target}"));
+    }
+    Ok(value)
+}
+
+// スタックに n 個以上あることを確認し、長さを返す
+fn require_len(calstack: &VecDeque<CalcNum>, n: usize) -> Result<usize, String> {
+    if calstack.len() < n {
         Err("Stack is too short".to_string())
     } else {
-        match (calstack.pop_back(), calstack.pop_back()) {
-            (Some(ex), Some(exex)) => Ok((exex, ex)),
-            _ => Err("Stack two pop Error".to_string()),
-        }
+        Ok(calstack.len())
     }
 }
+
+// スタックから2つの要素を (Y, X) の順で取り出す
+fn get_two_item(calstack: &mut VecDeque<CalcNum>) -> Result<(CalcNum, CalcNum), String> {
+    require_len(calstack, 2)?;
+    let x = calstack.pop_back().unwrap();
+    let y = calstack.pop_back().unwrap();
+    Ok((y, x))
+}
+
 // スタックから1つの要素を取り出す
 fn get_one_item(calstack: &mut VecDeque<CalcNum>) -> Result<CalcNum, String> {
-    if calstack.is_empty() {
-        Err("Stack is Empty".to_string())
-    } else {
-        match calstack.pop_back() {
-            Some(ex) => Ok(ex),
-            None => Err("Stack is Empty".to_string()),
-        }
-    }
+    calstack.pop_back().ok_or_else(|| "Stack is Empty".to_string())
 }
 
 fn safe_product(iter: impl IntoIterator<Item = u64>) -> Result<u64, &'static str> {
@@ -1180,6 +838,23 @@ mod tests {
         Ok(())
     }
 
+    // 空の状態から式を評価し、(結果, スタック, メモリ) を返す
+    fn run(exp: &str) -> (Result<(), String>, VecDeque<CalcNum>, BTreeMap<String, CalcNum>) {
+        let mut stack = VecDeque::new();
+        let mut memory = BTreeMap::new();
+        let mut memomode = None;
+        let result = manage_stack(exp, &mut stack, &mut DegMode::Rad, &mut memory, &mut memomode)
+            .map_err(|e| e.to_string());
+        (result, stack, memory)
+    }
+
+    fn top(stack: &VecDeque<CalcNum>) -> f64 {
+        match stack.back() {
+            Some(CalcNum::Number(v)) => *v,
+            other => panic!("expected real number on top, got {other:?}"),
+        }
+    }
+
     #[test]
     fn error_keeps_state_unchanged() {
         // 途中でエラーになった場合、スタック・メモリ・モードは入力前のまま
@@ -1237,21 +912,72 @@ mod tests {
 
     #[test]
     fn stack_is_limited_to_stack_size() {
-        let mut stack = VecDeque::new();
-        let mut memory = BTreeMap::new();
-        let mut memomode = None;
         let input = (1..=20).map(|n| n.to_string()).collect::<Vec<_>>().join(" ");
-
-        manage_stack(
-            &input,
-            &mut stack,
-            &mut DegMode::Rad,
-            &mut memory,
-            &mut memomode,
-        )
-        .unwrap();
+        let (result, stack, _) = run(&input);
+        assert!(result.is_ok());
         assert_eq!(stack.len(), STACK_SIZE);
         // 古いものから削除され、最新の 20 が末尾に残る
-        assert!(matches!(stack.back(), Some(CalcNum::Number(v)) if *v == 20.0));
+        assert_eq!(top(&stack), 20.0);
+    }
+
+    #[test]
+    fn stack_operations() {
+        let (_, stack, _) = run("1 2 3 sw");
+        assert_eq!(stack, VecDeque::from([1.0, 3.0, 2.0].map(CalcNum::Number)));
+        let (_, stack, _) = run("1 2 3 rup");
+        assert_eq!(stack, VecDeque::from([3.0, 1.0, 2.0].map(CalcNum::Number)));
+        let (_, stack, _) = run("1 2 3 rdn");
+        assert_eq!(stack, VecDeque::from([2.0, 3.0, 1.0].map(CalcNum::Number)));
+        let (_, stack, _) = run("1 2 3 dl");
+        assert_eq!(stack, VecDeque::from([1.0, 2.0].map(CalcNum::Number)));
+        let (_, stack, _) = run("5 ");
+        assert_eq!(top(&stack), 5.0);
+        assert!(run("1 sw").0.is_err());
+        assert!(run("dl").0.is_err());
+        assert!(run("1 2+3i sum").0.is_err());
+    }
+
+    #[test]
+    fn commands_are_case_insensitive() {
+        let (_, stack, _) = run("PI 2 / SIN");
+        assert!((top(&stack) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn unknown_token_reports_clearly() {
+        let (result, _, _) = run("1 foo");
+        assert!(result.unwrap_err().contains("Unknown command or memo key: 'foo'"));
+    }
+
+    #[test]
+    fn memory_store_recall_delete() {
+        // 明示的な rcl と、キー名だけでの呼び出しの両方
+        let (_, stack, memory) = run("5 sto x rcl x x +");
+        assert_eq!(top(&stack), 10.0);
+        assert_eq!(memory.get("x"), Some(&CalcNum::Number(5.0)));
+
+        let (_, _, memory) = run("5 sto x 6 sto y mdel x");
+        assert!(!memory.contains_key("x"));
+        assert!(memory.contains_key("y"));
+
+        let (_, _, memory) = run("5 sto x mc");
+        assert!(memory.is_empty());
+
+        assert!(run("mdel nothing").0.is_err());
+        assert!(run("sto x").0.is_err()); // スタックが空
+    }
+
+    #[test]
+    fn tvm_solve() {
+        let (result, stack, memory) = run("12 tn 20 tiyr -22 tpv -1 tpmt tvm fv");
+        assert!(result.is_ok());
+        assert!((top(&stack) - 39.99).abs() < 0.01);
+        assert!(memory.contains_key("fv"));
+
+        let (result, _, _) = run("12 tn 20 tiyr tvm fv");
+        assert!(result.unwrap_err().contains("'pv' is not set"));
+
+        let (result, _, _) = run("12 tn tvm xyz");
+        assert!(result.unwrap_err().contains("unknown target"));
     }
 }

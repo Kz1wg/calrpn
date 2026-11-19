@@ -1,4 +1,5 @@
 mod calcrpn;
+mod commands;
 mod finance;
 use calcrpn::{CalcNum, DegMode, Memorize, manage_stack};
 use crossterm::execute;
